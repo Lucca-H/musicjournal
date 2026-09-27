@@ -3,7 +3,7 @@
 A native macOS app that recommends music for how you feel, with a private, locked journal of your moods and the songs that stuck. Type your mood in plain words ("rainy sunday, a bit melancholy but cozy") and get:
 
 - **Playlists to find on Spotify**: mood-shaped search phrases that open straight in the Spotify app
-- **Custom mix**: about 25 songs chosen for the mood and your taste, with artwork and 30-second previews. Click a song to open it in Spotify, or **Play in Spotify** to play the whole mix there.
+- **Custom mix**: about 25 songs chosen for the mood and your taste, with artwork and 30-second previews. Click a song to open it in Spotify, **Play in Spotify** to play the whole mix there, or **YouTube** to queue it all on YouTube.
 
 It works with a **free Spotify account** and needs no login.
 
@@ -54,6 +54,20 @@ How the queue behaves:
 - **Label-blocked songs:** some record labels block the Claude connector, so a few songs per mix can't be played this way. They're skipped.
 
 This needs Spotify connected in claude.ai (**Settings → Connectors**).
+
+## Play on YouTube
+
+**YouTube** (next to Play in Spotify, on journal entries, and "Play from here on YouTube" when you
+right-click a song) queues the whole mix on YouTube in one go and opens it in your browser. No
+login or API key needed.
+
+- Each song is looked up with the same search the YouTube website uses. MusicJournal picks the
+  artist's own upload (official audio first), close to the right length, and passes over live
+  versions, covers, sped-up edits and full albums. A mix of 25 takes a few seconds.
+- YouTube plays the list as a temporary playlist, in order, with its own next, shuffle and loop.
+  It holds up to 50 songs. MusicJournal doesn't need to stay open.
+- Starting YouTube stops the Spotify queue (and pauses Spotify), so only one thing plays.
+- Journal entries remember each song's video, so replaying a past day is instant.
 
 ## Journal
 
@@ -110,6 +124,7 @@ scripts/make-icon.sh          # regenerate Resources/AppIcon.icns from scripts/i
 .build/debug/MusicJournal --brain-test "hyped for the gym" claude                    # just the Claude plan
 .build/debug/MusicJournal --brain-test "hyped for the gym" apple                     # just the on-device plan
 .build/debug/MusicJournal --resolve-test "Holocene — Bon Iver"                        # Spotify lookup only (nothing plays)
+.build/debug/MusicJournal --youtube-test "Holocene — Bon Iver"                        # YouTube lookup only (nothing opens)
 ```
 
 ## Settings (⌘,)

@@ -50,6 +50,28 @@ enum BrainTest {
         done.wait()
     }
 
+    /// `MusicJournal --youtube-test "Title — Artist" …` shows which YouTube video each song
+    /// would play (search only; nothing opens).
+    static func runYouTubeBlocking(arguments: [String]) {
+        let songs = Array(arguments.drop { $0 != "--youtube-test" }.dropFirst()).map { line -> YouTubeFinder.Song in
+            let ref = SongRef(line: line)
+            return .init(title: ref.title, artist: ref.artist ?? "", seconds: nil)
+        }
+        let done = DispatchSemaphore(value: 0)
+        Task.detached {
+            let start = Date()
+            let found = await YouTubeFinder.find(songs)
+            for (i, song) in songs.enumerated() {
+                let v = found[i]
+                print("\(song.title) — \(song.artist): \(v.map { "\($0.id)  \($0.title)  [\($0.channel)]" } ?? "not found")")
+            }
+            if let url = YouTubeLinks.queue(songs.indices.compactMap { found[$0]?.id }) { print(url) }
+            print(String(format: "took %.1fs", Date().timeIntervalSince(start)))
+            done.signal()
+        }
+        done.wait()
+    }
+
     private static func runFree(mood: String, artists: String, withLinks: Bool) async {
         let names = artists.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         let engine = RecommendationEngine(

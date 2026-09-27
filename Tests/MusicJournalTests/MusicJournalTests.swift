@@ -294,18 +294,18 @@ private struct StubBrain: MoodBrain {
     }
 
     @Test func offIgnoresTasteButKeepsNotForMe() {
-        let text = prompt(Personalization(artists: ["Taylor Swift"], influence: .off, avoid: ["country"]))
-        #expect(!text.contains("Taylor Swift"))
+        let text = prompt(Personalization(artists: ["The Velvet Hours"], influence: .off, avoid: ["country"]))
+        #expect(!text.contains("The Velvet Hours"))
         #expect(text.contains("Taste guidance: none"))
         #expect(text.contains("Not for me (never suggest these artists or genres): country"))
     }
 
     @Test func subtleIsAHintAndStrongLeansIn() {
-        let subtle = prompt(Personalization(artists: ["Taylor Swift"], songs: ["Iris — Goo Goo Dolls"], influence: .subtle))
+        let subtle = prompt(Personalization(artists: ["The Velvet Hours"], songs: ["Lantern — Harbor Lights"], influence: .subtle))
         #expect(subtle.contains("Taste guidance (subtle): Use this only as a light hint"))
-        #expect(subtle.contains("Artists they like: Taylor Swift"))
-        #expect(subtle.contains("Favourite songs: Iris — Goo Goo Dolls"))
-        let strong = prompt(Personalization(artists: ["Taylor Swift"], influence: .strong))
+        #expect(subtle.contains("Artists they like: The Velvet Hours"))
+        #expect(subtle.contains("Favourite songs: Lantern — Harbor Lights"))
+        let strong = prompt(Personalization(artists: ["The Velvet Hours"], influence: .strong))
         #expect(strong.contains("Taste guidance (strong): Lean on this"))
     }
 
@@ -320,23 +320,23 @@ private struct StubBrain: MoodBrain {
 
     @Test func listsParseCommasAndLines() {
         #expect(Personalization.list(from: "a, b\nc,, A") == ["a", "b", "c"])
-        #expect(Personalization.list(from: "Luv(sic), Pt. 3 — Nujabes\nIris", commas: false) == ["Luv(sic), Pt. 3 — Nujabes", "Iris"])
+        #expect(Personalization.list(from: "Luv(sic), Pt. 3 — Nujabes\nLantern", commas: false) == ["Luv(sic), Pt. 3 — Nujabes", "Lantern"])
     }
 
     @Test func songRefsParseAndMatch() {
-        #expect(SongRef(line: "Iris — Goo Goo Dolls") == SongRef(title: "Iris", artist: "Goo Goo Dolls"))
-        #expect(SongRef(line: "Slide by Goo Goo Dolls") == SongRef(title: "Slide", artist: "Goo Goo Dolls"))
-        #expect(SongRef(line: "Good Riddance") == SongRef(title: "Good Riddance", artist: nil))
-        let iris = SongRef(line: "Iris — Goo Goo Dolls")
-        #expect(iris.matches(title: "iris", artist: "The Goo Goo Dolls"))
-        #expect(!iris.matches(title: "Iris", artist: "Hozier"))          // same title, different song
-        #expect(SongRef(line: "Iris").matches(title: "Iris", artist: "Anyone"))
+        #expect(SongRef(line: "Lantern — Harbor Lights") == SongRef(title: "Lantern", artist: "Harbor Lights"))
+        #expect(SongRef(line: "Tidewater by Harbor Lights") == SongRef(title: "Tidewater", artist: "Harbor Lights"))
+        #expect(SongRef(line: "Long Way Home") == SongRef(title: "Long Way Home", artist: nil))
+        let lantern = SongRef(line: "Lantern — Harbor Lights")
+        #expect(lantern.matches(title: "lantern", artist: "The Harbor Lights"))
+        #expect(!lantern.matches(title: "Lantern", artist: "Hozier"))          // same title, different song
+        #expect(SongRef(line: "Lantern").matches(title: "Lantern", artist: "Anyone"))
     }
 
     @Test func excludedSongsDependOnInfluence() {
-        var p = Personalization(songs: ["Iris — Goo Goo Dolls"], skippedSongs: ["Nikes — Frank Ocean"])
+        var p = Personalization(songs: ["Lantern — Harbor Lights"], skippedSongs: ["Nikes — Frank Ocean"])
         p.influence = .subtle
-        #expect(p.excludedSongs.map(\.title) == ["Nikes", "Iris"])
+        #expect(p.excludedSongs.map(\.title) == ["Nikes", "Lantern"])
         p.influence = .strong
         #expect(p.excludedSongs.map(\.title) == ["Nikes"])
         p.influence = .off
@@ -346,19 +346,19 @@ private struct StubBrain: MoodBrain {
     @Test func sanitizeCapsArtistsDropsExcludedAndLimitsLength() throws {
         var plan = try JSONDecoder().decode(MoodPlan.self, from: Data(samplePlanJSON.utf8))
         plan.trackSuggestions = [
-            .init(title: "A", artist: "Taylor Swift"), .init(title: "B", artist: "Taylor Swift"),
-            .init(title: "C", artist: "taylor swift"), .init(title: "Iris", artist: "Goo Goo Dolls"),
-            .init(title: "Iris", artist: "Hozier"), .init(title: "D", artist: "Other"), .init(title: "E", artist: "Other 2"),
+            .init(title: "A", artist: "The Velvet Hours"), .init(title: "B", artist: "The Velvet Hours"),
+            .init(title: "C", artist: "the velvet hours"), .init(title: "Lantern", artist: "Harbor Lights"),
+            .init(title: "Lantern", artist: "Hozier"), .init(title: "D", artist: "Other"), .init(title: "E", artist: "Other 2"),
         ]
-        let clean = plan.sanitized(validPlaylistIDs: [], excluded: [SongRef(line: "Iris — Goo Goo Dolls")], maxTracks: 4)
-        #expect(clean.trackSuggestions.map { "\($0.title)/\($0.artist)" } == ["A/Taylor Swift", "B/Taylor Swift", "Iris/Hozier", "D/Other"])
+        let clean = plan.sanitized(validPlaylistIDs: [], excluded: [SongRef(line: "Lantern — Harbor Lights")], maxTracks: 4)
+        #expect(clean.trackSuggestions.map { "\($0.title)/\($0.artist)" } == ["A/The Velvet Hours", "B/The Velvet Hours", "Lantern/Hozier", "D/Other"])
     }
 
     @Test func preferencesAlwaysApplyEvenWithTasteOff() {
-        let p = Personalization(artists: ["Taylor Swift"], influence: .off, approach: .lift, discovery: .discover,
+        let p = Personalization(artists: ["The Velvet Hours"], influence: .off, approach: .lift, discovery: .discover,
                                 vocals: .instrumental, cleanOnly: true, mixLength: 15, skippedSongs: ["Nikes — Frank Ocean"])
         let text = prompt(p)
-        #expect(!text.contains("Taylor Swift"))
+        #expect(!text.contains("The Velvet Hours"))
         #expect(text.contains("Gently lift the mood"))
         #expect(text.contains("Favour lesser-known songs"))
         #expect(text.contains("Mostly instrumental tracks."))
@@ -488,11 +488,11 @@ private struct StubCatalog: MusicCatalog {
     @Test func subtleCapsSongsByYourArtistsAtThree() throws {
         var plan = try JSONDecoder().decode(MoodPlan.self, from: Data(samplePlanJSON.utf8))
         plan.trackSuggestions = [
-            .init(title: "A", artist: "Taylor Swift"), .init(title: "B", artist: "twenty one pilots"),
-            .init(title: "C", artist: "Taylor Swift"), .init(title: "D", artist: "Other"),
-            .init(title: "E", artist: "twenty one pilots"), .init(title: "F", artist: "Else"),
+            .init(title: "A", artist: "The Velvet Hours"), .init(title: "B", artist: "lumen drive"),
+            .init(title: "C", artist: "The Velvet Hours"), .init(title: "D", artist: "Other"),
+            .init(title: "E", artist: "lumen drive"), .init(title: "F", artist: "Else"),
         ]
-        let clean = plan.sanitized(validPlaylistIDs: [], favouriteArtists: ["taylor swift", "Twenty One Pilots"], maxFromFavourites: 3)
+        let clean = plan.sanitized(validPlaylistIDs: [], favouriteArtists: ["the velvet hours", "Lumen Drive"], maxFromFavourites: 3)
         #expect(clean.trackSuggestions.map(\.title) == ["A", "B", "C", "D", "F"])
     }
 
@@ -586,8 +586,8 @@ private struct StubCatalog: MusicCatalog {
     }
 
     @Test func songListsAcceptSemicolons() {
-        #expect(Personalization.list(from: "Iris — Goo Goo Dolls; Slide — Goo Goo Dolls", commas: false)
-                == ["Iris — Goo Goo Dolls", "Slide — Goo Goo Dolls"])
+        #expect(Personalization.list(from: "Lantern — Harbor Lights; Tidewater — Harbor Lights", commas: false)
+                == ["Lantern — Harbor Lights", "Tidewater — Harbor Lights"])
         #expect(Personalization.list(from: "Luv(sic), Pt. 3 — Nujabes", commas: false) == ["Luv(sic), Pt. 3 — Nujabes"])
     }
 
@@ -815,6 +815,13 @@ private struct StubCatalog: MusicCatalog {
 }
 
 @Suite struct RebrandMigrationTests {
+    @Test func findsEarlierAppIDsByTheirEndingNewestFirst() {
+        let files = ["a.b.spothelper.plist", "com.apple.finder.plist", "x.y.musicjournal.plist",
+                     "com.musicjournal.app.plist", "notes.musicjournal.txt"]
+        #expect(LegacyMigration.legacyDomains(in: files, currentID: "com.musicjournal.app")
+                == ["x.y.musicjournal", "a.b.spothelper"])
+    }
+
     @Test func movesOldDataAndCopiesSettingsOnce() throws {
         let fm = FileManager.default
         let base = fm.temporaryDirectory.appendingPathComponent("mj-\(UUID().uuidString)")
@@ -1198,5 +1205,66 @@ private struct StubCatalog: MusicCatalog {
                 }
             }
         }
+    }
+}
+
+// MARK: - YouTube
+
+@Suite struct YouTubeTests {
+    private func video(_ title: String, _ channel: String, _ seconds: Int? = 240, id: String = "abcdefghijk") -> YouTubeVideo {
+        YouTubeVideo(id: id, title: title, channel: channel, seconds: seconds)
+    }
+
+    @Test func picksTheCleanOfficialVersionOverLiveCoversAndAlbums() {
+        let song = YouTubeFinder.Song(title: "Holocene", artist: "Bon Iver", seconds: 336)
+        let videos = [
+            video("Bon Iver - Holocene (Live at Rock the Garden)", "The Current", 375, id: "live0000000"),
+            video("Holocene - Bon Iver (Sierra Eagleson Cover)", "Sierra Eagleson", 327, id: "cover000000"),
+            video("Bon Iver Greatest Hits", "Some Mixes", 4154, id: "album000000"),
+            video("Bon Iver - Holocene (Deluxe) - Official Audio", "Bon Iver", 332, id: "official000"),
+        ]
+        #expect(YouTubeFinder.best(in: videos, for: song)?.id == "official000")
+    }
+
+    @Test func topicChannelsCountAsTheArtist() {
+        let song = YouTubeFinder.Song(title: "Re: Stacks", artist: "Bon Iver", seconds: nil)
+        #expect(YouTubeFinder.best(in: [video("Re: Stacks", "Bon Iver - Topic")], for: song) != nil)
+    }
+
+    @Test func rejectsOtherSongsAndOtherArtists() {
+        let song = YouTubeFinder.Song(title: "Ivy", artist: "Frank Ocean", seconds: nil)
+        #expect(YouTubeFinder.best(in: [video("Frank Ocean - Nikes", "Blonded")], for: song) == nil)
+        #expect(YouTubeFinder.best(in: [video("Ivy", "Someone Else")], for: song) == nil)
+        // A remix only when you asked for the remix.
+        let remix = YouTubeFinder.Song(title: "Ivy (Remix)", artist: "Frank Ocean", seconds: nil)
+        #expect(YouTubeFinder.best(in: [video("Frank Ocean - Ivy (Remix)", "Blonded")], for: remix) != nil)
+    }
+
+    @Test func readsTheSearchResponse() throws {
+        let json = """
+        {"contents":{"sectionListRenderer":{"contents":[{"itemSectionRenderer":{"contents":[
+          {"videoRenderer":{"videoId":"TWcyIpul8OE","title":{"runs":[{"text":"Bon Iver - Holocene - Official Video"}]},
+           "ownerText":{"runs":[{"text":"Bon Iver"}]},"lengthText":{"simpleText":"5:44"}}},
+          {"adSlotRenderer":{}},
+          {"videoRenderer":{"videoId":"short","title":{"runs":[{"text":"bad id"}]}}}
+        ]}}]}}}
+        """
+        let videos = YouTubeFinder.parseSearch(Data(json.utf8))
+        #expect(videos == [YouTubeVideo(id: "TWcyIpul8OE", title: "Bon Iver - Holocene - Official Video", channel: "Bon Iver", seconds: 344)])
+        #expect(YouTubeFinder.seconds(from: "1:02:03") == 3723)
+        #expect(YouTubeFinder.seconds(from: "") == nil)
+    }
+
+    @Test func queueLinkHoldsUpToFiftyVideos() throws {
+        #expect(YouTubeLinks.queue([]) == nil)
+        let url = try #require(YouTubeLinks.queue((0..<60).map { String(format: "v%010d", $0) }))
+        #expect(url.absoluteString.hasPrefix("https://www.youtube.com/watch_videos?video_ids="))
+        #expect(url.query?.split(separator: ",").count == 50)
+    }
+
+    @Test func olderJournalSongsWithoutAVideoStillOpen() throws {
+        let old = #"{"id":"a","title":"Holocene","artist":"Bon Iver","spotifyURI":"spotify:search:x","stuck":true}"#
+        let song = try JSONDecoder().decode(JournalSong.self, from: Data(old.utf8))
+        #expect(song.youtubeID == nil)
     }
 }

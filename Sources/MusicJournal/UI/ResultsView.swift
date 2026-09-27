@@ -158,6 +158,23 @@ struct ResultsView: View {
                 .help("More")
 
                 Button {
+                    model.playMixOnYouTube()
+                } label: {
+                    if model.youtubeState == .finding {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Finding on YouTube…")
+                        }
+                    } else {
+                        Label("YouTube", systemImage: "play.rectangle.fill")
+                    }
+                }
+                .buttonStyle(.glass)
+                .controlSize(.large)
+                .disabled(model.youtubeState == .finding)
+                .help("Queues the whole mix on YouTube and opens it in your browser")
+
+                Button {
                     model.playMixInSpotify()
                 } label: {
                     if model.linkState == .finding {
@@ -366,6 +383,7 @@ struct TrackRow: View {
         .contextMenu {
             if model.recommendation?.canSaveMix == false {
                 Button("Play from here in Spotify") { model.playMixInSpotify(startingAt: entry.id) }
+                Button("Play from here on YouTube") { model.playMixOnYouTube(startingAt: entry.id) }
             }
             Button("Open in Spotify") { openInSpotify() }
         }

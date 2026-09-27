@@ -13,6 +13,10 @@ enum Entry {
             BrainTest.runResolveBlocking(arguments: CommandLine.arguments)
             return
         }
+        if CommandLine.arguments.contains("--youtube-test") {
+            BrainTest.runYouTubeBlocking(arguments: CommandLine.arguments)
+            return
+        }
         if CommandLine.arguments.contains("--zen-render") {
             ZenRender.run(arguments: CommandLine.arguments)
             return

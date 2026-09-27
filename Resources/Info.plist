@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleIdentifier</key>
-	<string>com.doudou.musicjournal</string>
+	<string>com.musicjournal.app</string>
 	<key>CFBundleName</key>
 	<string>MusicJournal</string>
 	<key>CFBundleDisplayName</key>

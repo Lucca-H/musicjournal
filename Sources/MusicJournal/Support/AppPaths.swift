@@ -10,15 +10,39 @@ enum AppPaths {
     }
 }
 
-/// One-time move from the app's old name, Spot Helper, so the rebrand keeps your journal,
-/// settings, recent moods and taste profile.
+/// One-time move from earlier builds (the app's old name, Spot Helper, and its old app IDs)
+/// so upgrading keeps your journal, settings, recent moods and taste profile.
 enum LegacyMigration {
-    static let oldBundleID = "com.doudou.spothelper"
     private static let doneKey = "migratedFromSpotHelper"
+
+    /// Settings saved under earlier app IDs, found by how the ID ends (never by a full name),
+    /// newest first: a later build's value wins over an older one's.
+    static func legacySettings(
+        currentID: String? = Bundle.main.bundleIdentifier,
+        preferences: URL = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Preferences")
+    ) -> [String: Any]? {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: preferences.path)) ?? []
+        var merged: [String: Any] = [:]
+        for domain in legacyDomains(in: names, currentID: currentID) {
+            for (key, value) in UserDefaults.standard.persistentDomain(forName: domain) ?? [:] where merged[key] == nil {
+                merged[key] = value
+            }
+        }
+        return merged.isEmpty ? nil : merged
+    }
+
+    /// Earlier app IDs among the preference files in `names`, newest (".musicjournal") first.
+    static func legacyDomains(in names: [String], currentID: String?) -> [String] {
+        names.filter { $0.hasSuffix(".plist") }
+            .map { String($0.dropLast(".plist".count)) }
+            .filter { $0 != currentID && ($0.hasSuffix(".musicjournal") || $0.hasSuffix(".spothelper")) }
+            .sorted { ($0.hasSuffix(".musicjournal") ? 0 : 1, $0) < ($1.hasSuffix(".musicjournal") ? 0 : 1, $1) }
+    }
 
     static func run(
         defaults: UserDefaults = .standard,
-        oldSettings: [String: Any]? = UserDefaults.standard.persistentDomain(forName: oldBundleID),
+        oldSettings: [String: Any]? = legacySettings(),
         baseDirectory: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0],
         fileManager: FileManager = .default
     ) {

@@ -25,7 +25,7 @@ enum UIReview {
         model.claudeCheck = .ready
         model.recentMoods = [
             RecentMood(text: "exhausted", date: Date().addingTimeInterval(-3_600 * 2)),
-            RecentMood(text: "holding onto a love i know i can't have", date: Date().addingTimeInterval(-86_400)),
+            RecentMood(text: "calm but a little restless", date: Date().addingTimeInterval(-86_400)),
             RecentMood(text: "sunday morning, slow and bright", date: Date().addingTimeInterval(-86_400 * 3)),
         ]
 

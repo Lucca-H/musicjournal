@@ -23,6 +23,8 @@ swift build -c release --arch x86_64 --scratch-path .build-intel
 INTEL="$(swift build -c release --arch x86_64 --scratch-path .build-intel --show-bin-path)/MusicJournal"
 lipo -create build/MusicJournal.app/Contents/MacOS/MusicJournal "$INTEL" \
   -output "$STAGE/MusicJournal.app/Contents/MacOS/MusicJournal"
+# Drop debug info: it records the folder the app was built in (your username included).
+strip -S -x "$STAGE/MusicJournal.app/Contents/MacOS/MusicJournal"
 codesign --force --sign - --timestamp=none "$STAGE/MusicJournal.app"
 codesign --verify --strict "$STAGE/MusicJournal.app"
 ditto -c -k --keepParent "$STAGE/MusicJournal.app" "$ZIP"

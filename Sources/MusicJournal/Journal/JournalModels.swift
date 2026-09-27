@@ -11,6 +11,8 @@ struct JournalSong: Codable, Hashable, Identifiable, Sendable {
     var spotifyURI: String
     var webURL: URL?
     var stuck: Bool
+    /// The YouTube video for this song, once it's been looked up.
+    var youtubeID: String?
 }
 
 /// One journal entry. Everything stays on this Mac, encrypted, and is never sent to Claude.
@@ -58,7 +60,7 @@ extension JournalEntry {
     /// with your thumbs-ups already marked as the ones that stuck.
     @MainActor
     static func from(_ recommendation: Recommendation, keptMix: [MixEntry], liked: (MixEntry) -> Bool,
-                     spotifyLinks: [Int: SpotifyTrackRef]) -> JournalEntry {
+                     spotifyLinks: [Int: SpotifyTrackRef], youtubeVideos: [Int: YouTubeVideo] = [:]) -> JournalEntry {
         let songs = keptMix.map { entry -> JournalSong in
             let title = entry.track?.name ?? entry.idea.title
             let artist = entry.track?.artist ?? entry.idea.artist
@@ -71,7 +73,8 @@ extension JournalEntry {
                 imageURL: entry.track?.imageURL ?? link?.imageURL,
                 spotifyURI: target.0,
                 webURL: target.1,
-                stuck: liked(entry)
+                stuck: liked(entry),
+                youtubeID: youtubeVideos[entry.id]?.id
             )
         }
         return JournalEntry(

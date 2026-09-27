@@ -86,6 +86,11 @@ final class AppModel {
     /// Real Spotify tracks for the current mix, keyed by `MixEntry.id` (free mode).
     var spotifyLinks: [Int: SpotifyTrackRef] = [:]
     var linkState: LinkState = .idle
+    /// YouTube videos for the current mix, keyed by `MixEntry.id`.
+    var youtubeVideos: [Int: YouTubeVideo] = [:]
+    var youtubeState: LinkState = .idle
+    /// The journal entry whose songs are being looked up on YouTube, if any.
+    var journalYouTubeID: JournalEntry.ID?
     /// Plays mixes and journal songs in the Spotify app, one after another.
     let queue = SpotifyQueue()
     /// The journal entry whose songs are being looked up on Spotify, if any.
@@ -320,6 +325,7 @@ final class AppModel {
     private var currentTask: Task<Void, Never>?
     private var linkTask: Task<Void, Never>?
     private var journalTask: Task<Void, Never>?
+    private var youtubeTask: Task<Void, Never>?
 
     private var engine: RecommendationEngine {
         let catalog: any MusicCatalog = switch accessMode {
@@ -366,6 +372,9 @@ final class AppModel {
         spotifyLinks = [:]
         linkTask?.cancel()
         linkState = .idle
+        youtubeVideos = [:]
+        youtubeTask?.cancel()
+        youtubeState = .idle
         taste = nil
         status = .idle
         await start()
@@ -423,6 +432,9 @@ final class AppModel {
         spotifyLinks = [:]
         linkTask?.cancel()
         linkState = .idle
+        youtubeVideos = [:]
+        youtubeTask?.cancel()
+        youtubeState = .idle
         player.stop()
         currentTask?.cancel()
 
@@ -496,6 +508,11 @@ final class AppModel {
         Haptics.success()
         lastLoggedDay = day
         logPulse += 1
+        showToast(message)
+    }
+
+    /// A quiet note that rises from the bottom for a couple of seconds.
+    func showToast(_ message: String) {
         withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) { toast = message }
         toastTask?.cancel()
         toastTask = Task {
@@ -517,7 +534,8 @@ final class AppModel {
             journal.add(JournalEntry.from(
                 recommendation, keptMix: keptMix,
                 liked: { self.feedback(for: $0) == .liked },
-                spotifyLinks: spotifyLinks
+                spotifyLinks: spotifyLinks,
+                youtubeVideos: youtubeVideos
             ))
             celebrateLog("Saved to your journal", day: recommendation.createdAt)
         }
@@ -600,6 +618,87 @@ final class AppModel {
                 status = .failed("Couldn't find the songs on Spotify: \(error.localizedDescription)")
             }
         }
+    }
+
+    // MARK: YouTube
+
+    /// Queues the whole mix on YouTube (from `entryID` on, if given) and opens it in your
+    /// browser. YouTube plays it as one playlist, in order, with its own next, shuffle and loop.
+    func playMixOnYouTube(startingAt entryID: Int? = nil) {
+        guard let recommendation, youtubeState != .finding else { return }
+        if youtubeState == .ready {
+            openMixOnYouTube(from: entryID)
+            return
+        }
+        youtubeState = .finding
+        let entries = keptMix
+        let songs = entries.map { entry in
+            YouTubeFinder.Song(
+                title: entry.track?.name ?? entry.idea.title,
+                artist: entry.track?.artist ?? entry.idea.artist,
+                seconds: entry.track?.durationMs.map { $0 / 1000 })
+        }
+        youtubeTask = Task {
+            let found = await YouTubeFinder.find(songs)
+            guard !Task.isCancelled, self.recommendation?.id == recommendation.id else { return }
+            youtubeVideos = Dictionary(uniqueKeysWithValues: found.map { (entries[$0.key].id, $0.value) })
+            youtubeState = .ready
+            openMixOnYouTube(from: entryID)
+        }
+    }
+
+    private func openMixOnYouTube(from entryID: Int?) {
+        var entries = keptMix
+        if let entryID, let start = entries.firstIndex(where: { $0.id == entryID }) {
+            entries = Array(entries[start...])
+        }
+        openOnYouTube(entries.compactMap { youtubeVideos[$0.id]?.id }, total: entries.count)
+    }
+
+    /// Plays a past entry's songs on YouTube, finding any it hasn't looked up before and
+    /// remembering them for next time.
+    func playJournalEntryOnYouTube(_ id: JournalEntry.ID, onlyStuck: Bool = false) {
+        guard let entry = journal.entries.first(where: { $0.id == id }), journalYouTubeID == nil else { return }
+        let songs = onlyStuck ? entry.stuckSongs : entry.songs
+        guard !songs.isEmpty else { return }
+        let missing = songs.filter { $0.youtubeID == nil }
+        let play = { [weak self] in
+            guard let self, let entry = self.journal.entries.first(where: { $0.id == id }) else { return }
+            let songs = onlyStuck ? entry.stuckSongs : entry.songs
+            self.openOnYouTube(songs.compactMap(\.youtubeID), total: songs.count)
+        }
+        guard !missing.isEmpty else {
+            play()
+            return
+        }
+        journalYouTubeID = id
+        youtubeTask?.cancel()
+        youtubeTask = Task {
+            defer { journalYouTubeID = nil }
+            let found = await YouTubeFinder.find(missing.map { .init(title: $0.title, artist: $0.artist, seconds: nil) })
+            guard !Task.isCancelled else { return }
+            journal.update(id) { entry in
+                for (index, video) in found {
+                    guard let i = entry.songs.firstIndex(where: { $0.id == missing[index].id }) else { continue }
+                    entry.songs[i].youtubeID = video.id
+                }
+            }
+            play()
+        }
+    }
+
+    private func openOnYouTube(_ ids: [String], total: Int) {
+        guard let url = YouTubeLinks.queue(ids) else {
+            queue.message = "Couldn't find these songs on YouTube."
+            return
+        }
+        // One thing at a time: stop the Spotify queue (and pause Spotify) and any preview.
+        if queue.isActive { queue.stop() }
+        player.stop()
+        NSWorkspace.shared.open(url)
+        let count = min(ids.count, 50)
+        let missing = total - ids.count
+        showToast("Queued \(count) \(count == 1 ? "song" : "songs") on YouTube" + (missing > 0 ? " · \(missing) not found" : ""))
     }
 
     private func startMixQueue(at entryID: Int?) {

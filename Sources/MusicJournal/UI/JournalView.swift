@@ -436,14 +436,33 @@ private struct JournalEntryEditor: View {
                 .buttonStyle(.glassProminent)
                 .disabled(finding || model.journalLookupID != nil)
                 .help("Plays every song from this entry, in order, the way you heard it")
+                let findingVideos = model.journalYouTubeID == entryID
+                Button {
+                    model.playJournalEntryOnYouTube(entryID)
+                } label: {
+                    if findingVideos {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Finding on YouTube…")
+                        }
+                    } else {
+                        Label("YouTube", systemImage: "play.rectangle.fill")
+                    }
+                }
+                .buttonStyle(.glass)
+                .disabled(model.journalYouTubeID != nil)
+                .help("Queues this entry's songs on YouTube and opens them in your browser")
                 if !stuck.isEmpty && !others.isEmpty && !finding {
-                    Button {
-                        model.playJournalEntry(entryID, onlyStuck: true)
+                    Menu {
+                        Button("In Spotify") { model.playJournalEntry(entryID, onlyStuck: true) }
+                            .disabled(model.journalLookupID != nil)
+                        Button("On YouTube") { model.playJournalEntryOnYouTube(entryID, onlyStuck: true) }
+                            .disabled(model.journalYouTubeID != nil)
                     } label: {
                         Label("Only the \(stuck.count == 1 ? "song" : "\(stuck.count) songs") that stuck", systemImage: "star")
                     }
                     .buttonStyle(.glass)
-                    .disabled(model.journalLookupID != nil)
+                    .fixedSize()
                 }
                 }
             }

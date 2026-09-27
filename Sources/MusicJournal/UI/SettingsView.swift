@@ -50,7 +50,7 @@ private struct PersonalizationSettings: View {
                     .foregroundStyle(.secondary)
                 Group {
                     field("Artists", text: $model.profileArtistsText, prompt: "Separated by commas or new lines")
-                    field("Favourite songs", text: $model.profileSongsText, prompt: "One per line (Return), or separated by ;\ne.g. Iris — Goo Goo Dolls")
+                    field("Favourite songs", text: $model.profileSongsText, prompt: "One per line (Return), or separated by ;\ne.g. Holocene — Bon Iver")
                     field("Genres & vibes", text: $model.profileGenresText, prompt: "e.g. pop rock, bedroom pop, rainy acoustic")
                     field("Eras", text: $model.profileErasText, prompt: "e.g. 90s, 2000s")
                     field("Languages", text: $model.profileLanguagesText, prompt: "e.g. English, Spanish, Korean")
