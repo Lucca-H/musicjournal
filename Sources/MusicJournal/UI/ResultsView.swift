@@ -58,7 +58,7 @@ struct ResultsView: View {
             .foregroundStyle(.secondary)
             .help(recommendation.createdAt.formatted(date: .complete, time: .standard))
             Text(recommendation.plan.interpretation)
-                .font(.system(.title2, design: .serif))
+                .font(Theme.Serif.prompt)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 6) {
                 ForEach(recommendation.plan.keywords, id: \.self) { keyword in
@@ -99,7 +99,7 @@ struct ResultsView: View {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(recommendation.plan.mixName)
-                            .font(.system(.title2, design: .serif).weight(.medium))
+                            .font(Theme.Serif.sheet)
                         Text(recommendation.plan.mixDescription)
                             .foregroundStyle(.secondary)
                         Text(mixSummary)
@@ -119,8 +119,8 @@ struct ResultsView: View {
                     }
                 }
                 .padding(.vertical, 6)
-                .background(Theme.surface(scheme), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Theme.hairline(scheme)))
+                .background(Theme.surface(scheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.hairline(scheme)))
             }
         }
     }
@@ -254,7 +254,7 @@ struct SearchPhraseCard: View {
                 ZStack(alignment: .bottomLeading) {
                     LinearGradient(colors: [top, bottom], startPoint: .topLeading, endPoint: .bottomTrailing)
                     Text(phrase)
-                        .font(.system(size: 20, weight: .medium, design: .serif))
+                        .font(Theme.Serif.cover)
                         .foregroundStyle(Color(red: 0.97, green: 0.95, blue: 0.92))
                         .lineLimit(4)
                         .minimumScaleFactor(0.7)
@@ -262,7 +262,7 @@ struct SearchPhraseCard: View {
                         .padding(16)
                 }
                 .aspectRatio(1, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .shadow(color: .black.opacity(hovering ? 0.25 : 0.12), radius: hovering ? 12 : 6, y: 4)
                 .overlay(alignment: .topTrailing) {
                     Image(systemName: "arrow.up.right.circle.fill")
@@ -299,7 +299,7 @@ struct PlaylistCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 Artwork(url: playlist.imageURL, symbol: "music.note.list")
                     .aspectRatio(1, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                     .shadow(color: .black.opacity(hovering ? 0.25 : 0.12), radius: hovering ? 12 : 6, y: 4)
                     .overlay(alignment: .bottomTrailing) {
                         Image(systemName: "play.circle.fill")
@@ -370,7 +370,7 @@ struct TrackRow: View {
                     .help("Open in Spotify")
             } else if let ms = entry.track?.durationMs {
                 Text(Duration.milliseconds(ms).formatted(.time(pattern: .minuteSecond)))
-                    .font(.caption.monospacedDigit())
+                    .font(Theme.smallPrint)
                     .foregroundStyle(.tertiary)
             }
         }
@@ -422,7 +422,7 @@ struct TrackRow: View {
                 .font(.caption)
                 .frame(width: 22, height: 22)
                 .contentShape(Rectangle())
-                .symbolEffect(.bounce, value: model.feedback(for: entry) == kind)
+                .symbolEffect(.pulse, options: .nonRepeating, value: model.feedback(for: entry) == kind)
                 .contentTransition(.symbolEffect(.replace))
         }
         .buttonStyle(.borderless)

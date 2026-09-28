@@ -37,7 +37,7 @@ private struct LockedJournal: View {
                 .foregroundStyle(.secondary)
             VStack(spacing: 8) {
                 Text("Your journal is locked")
-                    .font(.system(.title2, design: .serif))
+                    .font(Theme.Serif.sheet)
                 Text("Unlock with Touch ID or your Mac password. Entries are encrypted on this Mac and never sent to Claude.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -156,8 +156,8 @@ private struct EntryRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(entry.title)
                         .lineLimit(1)
-                    Text("\(TimeOfDay.part(forHour: Calendar.current.component(.hour, from: entry.createdAt))) · \(entry.createdAt.formatted(date: .omitted, time: .shortened))")
-                        .font(.caption)
+                    Text("\(TimeOfDay.part(forHour: Calendar.current.component(.hour, from: entry.createdAt))) · \(entry.createdAt.formatted(date: .omitted, time: .shortened))".lowercased())
+                        .font(Theme.smallPrint)
                         .foregroundStyle(.secondary)
                     if !entry.stuckSongs.isEmpty {
                         Label("\(entry.stuckSongs.count) song\(entry.stuckSongs.count == 1 ? "" : "s") stuck", systemImage: "star.fill")
@@ -171,7 +171,7 @@ private struct EntryRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 selected ? Theme.accent.opacity(0.2) : (hovering ? Color.primary.opacity(0.05) : .clear),
-                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
             )
             .contentShape(Rectangle())
         }
@@ -186,11 +186,11 @@ private struct EmptyJournal: View {
     var body: some View {
         VStack(spacing: 12) {
             Text("Nothing here yet")
-                .font(.system(.title2, design: .serif))
+                .font(Theme.Serif.sheet)
             Text("Write about today, or save a mood from its results.")
                 .foregroundStyle(.secondary)
             Button("Write about today") { model.journal.openToday() }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.glass)          // Add log is this screen's accent
         }
     }
 }
@@ -256,9 +256,9 @@ private struct JournalEntryEditor: View {
     private func header(_ entry: JournalEntry) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(entry.createdAt, format: .dateTime.weekday(.wide).month(.wide).day().year())
-                .font(.system(size: 28, weight: .regular, design: .serif))
-            Text("\(TimeOfDay.describe(entry.createdAt)) · \(entry.createdAt.formatted(date: .omitted, time: .shortened))")
-                .font(.callout)
+                .font(Theme.Serif.page)
+            Text("\(TimeOfDay.describe(entry.createdAt)) · \(entry.createdAt.formatted(date: .omitted, time: .shortened))".lowercased())
+                .font(Theme.smallPrint)
                 .foregroundStyle(.secondary)
             if let mood = entry.mood {
                 HStack(alignment: .top, spacing: 12) {
@@ -267,7 +267,7 @@ private struct JournalEntryEditor: View {
                         .frame(width: 3)
                     VStack(alignment: .leading, spacing: 4) {
                         Text("“\(mood)”")
-                            .font(.system(.title3, design: .serif).italic())
+                            .font(Theme.Serif.quote)
                         if let mix = entry.mixName {
                             Text("Mix: \(mix)")
                                 .font(.caption)
@@ -298,7 +298,7 @@ private struct JournalEntryEditor: View {
                 DayRatingSummary(current: current) { changingDay = true }
             }
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: asking)
+        .animation(.spring(response: 0.35, dampingFraction: 0.9), value: asking)
     }
 
     /// Optional detail: up to three of fourteen feelings, as colour chips that wrap.
@@ -337,7 +337,7 @@ private struct JournalEntryEditor: View {
                     } label: {
                         HStack(spacing: 6) {
                             Circle().fill(feeling.color).frame(width: 10, height: 10)
-                            Text(feeling.label).font(.callout)
+                            Text(feeling.label).font(Theme.Serif.feeling)
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
@@ -373,7 +373,7 @@ private struct JournalEntryEditor: View {
     }
 
     private func writingArea(_ entry: JournalEntry) -> some View {
-        let font = Font.system(size: 16, design: .serif)
+        let font = Theme.Serif.writing
         // The invisible copy of the text sizes the box, so it grows as you write and only
         // the page scrolls (no box-inside-a-scroll-view).
         return ZStack(alignment: .topLeading) {
@@ -404,7 +404,7 @@ private struct JournalEntryEditor: View {
                     Text(entry.mood == nil
                          ? "What happened today? Little details count."
                          : "How are you, really? What stayed with you?")
-                        .font(.system(size: 16, design: .serif))
+                        .font(Theme.Serif.writing)
                         .foregroundStyle(.tertiary)
                         .padding(.horizontal, 17)
                         .padding(.vertical, 12)
@@ -433,7 +433,7 @@ private struct JournalEntryEditor: View {
                               systemImage: "play.fill")
                     }
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.glass)          // Add log is this screen's accent
                 .disabled(finding || model.journalLookupID != nil)
                 .help("Plays every song from this entry, in order, the way you heard it")
                 let findingVideos = model.journalYouTubeID == entryID
@@ -562,7 +562,7 @@ private struct JournalSongRow: View {
                     .foregroundStyle(song.stuck ? Theme.accent : .secondary)
                     .frame(width: 24, height: 24)
                     .contentShape(Rectangle())
-                    .symbolEffect(.bounce, value: song.stuck)
+                    .symbolEffect(.pulse, options: .nonRepeating, value: song.stuck)
                     .contentTransition(.symbolEffect(.replace))
             }
             .buttonStyle(.borderless)
@@ -570,7 +570,7 @@ private struct JournalSongRow: View {
         }
         .padding(.vertical, 5)
         .padding(.horizontal, 6)
-        .background(hovering ? Color.primary.opacity(0.05) : .clear, in: RoundedRectangle(cornerRadius: 8))
+        .background(hovering ? Color.primary.opacity(0.05) : .clear, in: RoundedRectangle(cornerRadius: 6))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture(perform: open)
@@ -610,7 +610,7 @@ struct DayRatingPicker: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: selected)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.9), value: selected)
                     .help(selected ? "Clear" : "\(rating.label) day")
                 }
             }

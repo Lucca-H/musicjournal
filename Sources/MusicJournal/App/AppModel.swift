@@ -66,8 +66,6 @@ final class AppModel {
         static let vocals = "vocals"
         static let cleanOnly = "cleanOnly"
         static let mixLength = "mixLength"
-        static let legacyRecentMoods = "recentMoods"
-        static let recentMoodHistory = "recentMoodHistory"
         static let brainPreference = "brainPreference"
         static let claudeModel = "claudeModel"
         static let claudePath = "claudePath"
@@ -155,14 +153,15 @@ final class AppModel {
             claudeCheck = .problem(error.localizedDescription)
         }
     }
-    private(set) var journal = JournalStore()
+    /// The real journal: the only one that moves in (and erases) older unencrypted moods.
+    private(set) var journal = JournalStore(legacyMoods: PlaintextMoodHistory())
 
     /// UI review only: swap in a sample journal that never touches the real one.
     func useJournalForReview(_ store: JournalStore) {
         journal = store
     }
-    var recentMoods: [RecentMood] = RecentMood.load(
-        from: UserDefaults.standard, key: Keys.recentMoodHistory, legacyKey: Keys.legacyRecentMoods)
+    /// Recent moods live encrypted in the journal; see `JournalStore.recentMoods`.
+    var recentMoods: [RecentMood] { journal.visibleRecentMoods }
     let player = PreviewPlayer()
 
     private(set) var accessMode: AccessMode =
@@ -496,7 +495,7 @@ final class AppModel {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard rating != nil || !trimmed.isEmpty else { return }
         let entry = JournalEntry(text: trimmed)
-        withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.9)) {
             journal.add(entry)
             if let rating { journal.setDayRating(rating, from: entry.id) }
         }
@@ -513,7 +512,7 @@ final class AppModel {
 
     /// A quiet note that rises from the bottom for a couple of seconds.
     func showToast(_ message: String) {
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) { toast = message }
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.9)) { toast = message }
         toastTask?.cancel()
         toastTask = Task {
             try? await Task.sleep(for: .seconds(1.8))
@@ -830,10 +829,7 @@ final class AppModel {
     }
 
     private func rememberMood(_ mood: String) {
-        recentMoods.removeAll { $0.text.caseInsensitiveCompare(mood) == .orderedSame }
-        recentMoods.insert(RecentMood(text: mood, date: Date()), at: 0)
-        recentMoods = Array(recentMoods.prefix(8))
-        RecentMood.save(recentMoods, to: UserDefaults.standard, key: Keys.recentMoodHistory)
+        journal.rememberMood(mood)
     }
 
     // MARK: Opening in Spotify

@@ -12,8 +12,8 @@ struct ZenView: View {
         VStack(spacing: 20) {
             VStack(spacing: 6) {
                 Text("Zen corner")
-                    .font(.system(size: 30, weight: .regular, design: .serif))
-                Text("Drag across the sand to rake it. Slow, steady strokes make the cleanest lines.")
+                    .font(Theme.Serif.page)
+                Text("Drag across the gravel to rake it. Slow, steady strokes make the cleanest lines.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -34,8 +34,8 @@ struct ZenView: View {
                     }
                 }
                 .frame(width: geo.size.width, height: geo.size.height)
-                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(.white.opacity(0.08)))
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(.white.opacity(0.08)))
                 .shadow(color: .black.opacity(0.28), radius: 18, y: 10)
                 .contentShape(Rectangle())
                 .gesture(
@@ -94,7 +94,7 @@ struct ZenView: View {
                     Haptics.tap()
                 }
             } label: {
-                Label("Smooth the sand", systemImage: "wind")
+                Label("Smooth the gravel", systemImage: "wind")
             }
             .buttonStyle(.glass)
             Button {

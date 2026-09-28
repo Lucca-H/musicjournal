@@ -17,6 +17,14 @@ enum Entry {
             BrainTest.runYouTubeBlocking(arguments: CommandLine.arguments)
             return
         }
+        if CommandLine.arguments.contains("--style-render") {
+            MainActor.assumeIsolated { StyleRender.run(arguments: CommandLine.arguments) }
+            return
+        }
+        if CommandLine.arguments.contains("--sky-render") {
+            MainActor.assumeIsolated { SkyRender.run(arguments: CommandLine.arguments) }
+            return
+        }
         if CommandLine.arguments.contains("--zen-render") {
             ZenRender.run(arguments: CommandLine.arguments)
             return
@@ -26,6 +34,7 @@ enum Entry {
             return
         }
         LegacyMigration.run()
+        Fraunces.register()
         MusicJournalApp.main()
     }
 }

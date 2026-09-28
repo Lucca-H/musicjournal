@@ -1,3 +1,5 @@
+import CoreText
+import CryptoKit
 import Foundation
 import Testing
 import simd
@@ -798,8 +800,8 @@ private struct StubCatalog: MusicCatalog {
         // Simulates macOS denying Keychain access after a rebuild.
         let denied = JournalStore(
             fileURL: url,
-            cipher: { exists in
-                if exists { throw JournalCipher.KeyError.unreadable }
+            cipher: { existing in
+                if existing != nil { throw JournalCipher.KeyError.unreadable }
                 return JournalCipher(key: .init(size: .bits256))
             },
             authenticate: { .success(()) }, observeSystemEvents: false)
@@ -863,6 +865,18 @@ private struct StubCatalog: MusicCatalog {
         #expect(queue.displayedPosition(at: read.addingTimeInterval(10_000)) == queue.duration)
     }
 
+    @Test func nextSongIsStartedASecondBeforeTheEnd() {
+        // Far from the end: wait for a later check.
+        #expect(SpotifyQueue.earlyStartDelay(position: 100, duration: 200, isPlaying: true) == nil)
+        // Within reach of the next check: start exactly one second before the end.
+        #expect(SpotifyQueue.earlyStartDelay(position: 197, duration: 200, isPlaying: true) == 2)
+        #expect(SpotifyQueue.earlyStartDelay(position: 199.5, duration: 200, isPlaying: true) == 0)
+        // Paused, finished, or no length known: never.
+        #expect(SpotifyQueue.earlyStartDelay(position: 198, duration: 200, isPlaying: false) == nil)
+        #expect(SpotifyQueue.earlyStartDelay(position: 200, duration: 200, isPlaying: true) == nil)
+        #expect(SpotifyQueue.earlyStartDelay(position: 0, duration: 0, isPlaying: true) == nil)
+    }
+
     @Test func repeatModesDecideWhatPlaysNext() {
         #expect(QueueOrder.next(after: 1, count: 3, repeat: .off, songEnded: true) == 2)
         #expect(QueueOrder.next(after: 2, count: 3, repeat: .off, songEnded: true) == nil)   // mix over
@@ -920,10 +934,11 @@ private struct StubCatalog: MusicCatalog {
         #expect(t.observe(obs(ours, 61, state: "paused")) == .wait)
     }
 
-    @Test func pickingSomethingElseMidSongStopsTheQueue() {
+    @Test func aDifferentSongMidwayIsReportedAsAChangeInSpotify() {
+        // Spotify's Next button or a media key; the queue skips (or steps aside if repeated).
         var t = QueueTracker(expectedID: "aaaaaaaaaaaaaaaaaaaaaa")
         _ = t.observe(obs(ours, 60))
-        if case .stop = t.observe(obs("spotify:track:other", 5)) {} else { Issue.record("expected stop") }
+        #expect(t.observe(obs("spotify:track:other", 5)) == .changedInSpotify)
     }
 
     @Test func adsAreWaitedOut() {
@@ -1022,13 +1037,11 @@ private struct StubCatalog: MusicCatalog {
         #expect(t.observe(obs("spotify:track:autoplay", 20), now: start.addingTimeInterval(120)) == .advance)
     }
 
-    @Test func realTakeoverMidSongStillStops() {
+    @Test func realChangeMidSongIsNotMistakenForTheSongEnding() {
         var t = QueueTracker(expectedID: id)
         let start = Date()
         _ = t.observe(obs(ours, 60), now: start)
-        if case .stop = t.observe(obs("spotify:track:other", 3), now: start.addingTimeInterval(1)) {} else {
-            Issue.record("expected stop")
-        }
+        #expect(t.observe(obs("spotify:track:other", 3), now: start.addingTimeInterval(1)) == .changedInSpotify)
     }
 
     @Test func acceptsSpotifysRelinkedVersionByName() {
@@ -1169,11 +1182,30 @@ private struct StubCatalog: MusicCatalog {
         #expect(abs(field.height(atX: 70, y: 60)) < 0.05)
     }
 
+    @Test func settlingMovesGravelWithoutMakingOrLosingAny() {
+        let field = SandField(width: 160, height: 100)
+        field.placeStones([])
+        field.smoothAll()
+        // Two crossing strokes leave steep edges where they meet.
+        field.rake(from: SIMD2(10, 50), to: SIMD2(150, 50), tines: 5, spacing: 6)
+        field.endStroke()
+        field.rake(from: SIMD2(80, 5), to: SIMD2(80, 95), tines: 5, spacing: 6)
+        func total() -> Double {
+            var sum = 0.0
+            for y in 0..<100 { for x in 0..<160 { sum += Double(field.height(atX: x, y: y)) } }
+            return sum
+        }
+        let before = total()
+        field.endStroke()
+        #expect(abs(total() - before) < 0.01)
+    }
+
     @Test func aStrokeRakesEachPatchOnceSoJointsLeaveNoMarks() {
         let whole = SandField(width: 200, height: 120)
         whole.placeStones([])
         whole.smoothAll()
         whole.rake(from: SIMD2(20, 60), to: SIMD2(180, 60), tines: 3, spacing: 8)
+        whole.endStroke()
 
         let pieces = SandField(width: 200, height: 120)
         pieces.placeStones([])
@@ -1266,5 +1298,117 @@ private struct StubCatalog: MusicCatalog {
         let old = #"{"id":"a","title":"Holocene","artist":"Bon Iver","spotifyURI":"spotify:search:x","stuck":true}"#
         let song = try JSONDecoder().decode(JournalSong.self, from: Data(old.utf8))
         #expect(song.youtubeID == nil)
+    }
+}
+
+// MARK: - Security fixes
+
+@MainActor
+@Suite struct SecurityTests {
+    @Test func onlyAKeyThatOpensTheJournalIsAdopted() throws {
+        let real = SymmetricKey(size: .bits256)
+        let planted = SymmetricKey(size: .bits256)
+        func encode(_ k: SymmetricKey) -> String { k.withUnsafeBytes { Data($0) }.base64EncodedString() }
+        let journal = try JournalCipher(key: real).seal([JournalEntry(text: "private")])
+
+        #expect(JournalCipher.firstKey(in: [encode(planted), "not a key"], opening: journal) == nil)
+        let (value, _) = try #require(JournalCipher.firstKey(in: [encode(planted), encode(real)], opening: journal))
+        #expect(value == encode(real))
+    }
+
+    private func store(_ url: URL, _ cipher: JournalCipher, legacy: PlaintextMoodHistory = .none) -> JournalStore {
+        JournalStore(fileURL: url, cipher: { _ in cipher }, authenticate: { .success(()) },
+                     legacyMoods: legacy, observeSystemEvents: false)
+    }
+
+    @Test func moodsAreEncryptedHiddenWhileLockedAndOldPlaintextIsErased() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mj-sec-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("journal.sealed")
+        let cipher = JournalCipher(key: .init(size: .bits256))
+        let defaults = try #require(UserDefaults(suiteName: "mj-sec-\(UUID().uuidString)"))
+        RecentMood.save([RecentMood(text: "an old secret mood", date: Date().addingTimeInterval(-600))],
+                        to: defaults, key: PlaintextMoodHistory.keys[0])
+        let legacy = PlaintextMoodHistory(defaults: defaults, legacyDomains: { [] })
+
+        let journal = store(url, cipher, legacy: legacy)
+        journal.rememberMood("typed while locked")
+        #expect(journal.visibleRecentMoods.map(\.text) == ["typed while locked"])   // memory only
+        #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent("journal-moods.sealed").path))
+
+        await journal.unlock()
+        #expect(journal.recentMoods.map(\.text) == ["typed while locked", "an old secret mood"])
+        let sealed = try Data(contentsOf: dir.appendingPathComponent("journal-moods.sealed"))
+        #expect(String(decoding: sealed, as: UTF8.self).contains("secret") == false)
+        #expect(defaults.object(forKey: PlaintextMoodHistory.keys[0]) == nil)       // plaintext erased
+
+        journal.lock()
+        #expect(journal.visibleRecentMoods.isEmpty)
+
+        let reopened = store(url, cipher)
+        await reopened.unlock()
+        #expect(reopened.recentMoods.map(\.text) == ["typed while locked", "an old secret mood"])
+    }
+
+    @Test func sampleJournalsNeverTouchRealSettings() {
+        #expect(PlaintextMoodHistory.none.load().isEmpty)
+        PlaintextMoodHistory.none.erase()   // no-op
+    }
+
+    @Test func mergedKeepsNewestOncePerMood() {
+        let now = Date()
+        let merged = RecentMood.merged(
+            [RecentMood(text: "Tired", date: now)],
+            [RecentMood(text: "tired", date: now.addingTimeInterval(-60)), RecentMood(text: "calm", date: now.addingTimeInterval(-30))],
+            [RecentMood(text: "undated", date: nil)])
+        #expect(merged.map(\.text) == ["Tired", "calm", "undated"])
+        #expect(RecentMood.merged((0..<20).map { RecentMood(text: "m\($0)", date: now.addingTimeInterval(Double(-$0))) }).count == 8)
+    }
+}
+
+// MARK: - Night sky
+
+@Suite struct SkyTests {
+    private func at(_ hour: Int, _ minute: Int = 0) -> Sky {
+        var parts = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        parts.hour = hour; parts.minute = minute
+        return Sky.at(Calendar.current.date(from: parts)!)
+    }
+
+    @Test func sunsetGlowsAndMidnightIsOnlyMoonAndStars() {
+        let sunset = at(19), late = at(1), noon = at(12)
+        #expect(sunset.warm > 0.9 && sunset.stars < 0.05 && sunset.moon == 0)
+        #expect(late.warm < 0.01 && late.horizon < 0.01)          // no warm glow at 1 am
+        #expect(late.moon > 0.9 && late.stars > 0.9)              // just moonlight and stars
+        #expect(noon.stars == 0 && noon.moon == 0 && noon.warm > 0)
+        #expect(at(6, 30).stars < 0.05)                           // gone by dawn
+    }
+}
+
+// MARK: - Type
+
+@Suite struct FrauncesTests {
+    @Test func bundledFrauncesLoadsLightSoftAndItalic() throws {
+        let fonts = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../../Resources/Fonts").standardizedFileURL
+        Fraunces.register(directory: fonts)
+
+        let upright = try #require(Fraunces.font(size: 34, italic: false))
+        #expect(CTFontCopyFamilyName(upright) as String == "Fraunces")
+        let axes = (CTFontCopyVariation(upright) as? [NSNumber: NSNumber]) ?? [:]
+        let wght = NSNumber(value: "wght".utf8.reduce(UInt32(0)) { $0 << 8 | UInt32($1) })
+        let soft = NSNumber(value: "SOFT".utf8.reduce(UInt32(0)) { $0 << 8 | UInt32($1) })
+        #expect(axes[wght]?.doubleValue == 300)
+        #expect(axes[soft]?.doubleValue == 100)
+
+        let italic = try #require(Fraunces.font(size: 15, italic: true))
+        #expect(CTFontGetSymbolicTraits(italic).contains(.traitItalic))
+    }
+
+    @Test func dayRatingsLandExactlyOnTheSkyRamp() {
+        for rating in DayRating.allCases {
+            #expect(Theme.blend(valence: rating.valence) == Theme.moodTones[rating.rawValue - 1])
+        }
     }
 }

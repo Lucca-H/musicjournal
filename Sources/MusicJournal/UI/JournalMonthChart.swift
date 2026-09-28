@@ -30,7 +30,7 @@ struct JournalMonthChart: View {
                 .help("Previous month")
             Spacer()
             Text(month, format: .dateTime.month(.wide).year())
-                .font(.system(.headline, design: .serif))
+                .font(Theme.Serif.small)
             Spacer()
             Button { shiftMonth(1) } label: { Image(systemName: "chevron.right") }
                 .buttonStyle(.borderless)
@@ -98,17 +98,20 @@ private struct DayCell: View {
         let isSelected = journal.selectedEntry.map { calendar.isDate($0.createdAt, inSameDayAs: day) } ?? false
         let isFuture = day > Date()
 
-        RoundedRectangle(cornerRadius: 7, style: .continuous)
+        RoundedRectangle(cornerRadius: 6, style: .continuous)
             .fill(valence.map(Theme.blend(valence:)) ?? Color.primary.opacity(entries.isEmpty ? 0.05 : 0.14))
             .aspectRatio(1, contentMode: .fit)
             .overlay {
                 Text("\(calendar.component(.day, from: day))")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(valence == nil ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Color.black.opacity(0.55)))
+                    .font(Theme.smallPrint)
+                    .foregroundStyle(valence.map { v in
+                        // Light numbers on the dark blue-hour and violet days, dark on the rest.
+                        AnyShapeStyle(v < 0.4 ? Color.white.opacity(0.78) : Color.black.opacity(0.55))
+                    } ?? AnyShapeStyle(.tertiary))
             }
             .overlay {
                 if isSelected || isToday {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .strokeBorder(isSelected ? Color.primary.opacity(0.7) : Theme.accent, lineWidth: isSelected ? 2 : 1.5)
                 }
             }
@@ -144,7 +147,7 @@ struct FeelingKey: View {
                     ForEach(Feeling.all.dropFirst(row * 2).prefix(2)) { feeling in
                         HStack(spacing: 7) {
                             Circle().fill(feeling.color).frame(width: 10, height: 10)
-                            Text(feeling.label).font(.caption)
+                            Text(feeling.label).font(Theme.serif(12, italic: true))
                         }
                     }
                 }
@@ -159,7 +162,7 @@ private struct LogRipple: View {
     let color: Color
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 7, style: .continuous)
+        RoundedRectangle(cornerRadius: 6, style: .continuous)
             .strokeBorder(color, lineWidth: 2)
             .keyframeAnimator(initialValue: RippleFrame(), trigger: trigger) { content, frame in
                 content

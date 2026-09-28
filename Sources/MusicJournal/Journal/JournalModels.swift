@@ -111,35 +111,72 @@ struct JournalCipher: Sendable {
     }
 
     /// Loads the key. A new key is only ever created when there's no journal yet
-    /// (`allowCreate`), so a denied or missing key can never cause existing entries to be
-    /// overwritten with a different key.
-    static func loadKey(account: String = "journal.key", allowCreate: Bool) throws -> SymmetricKey {
+    /// (`existingJournal` is nil), so a denied or missing key can never cause existing entries
+    /// to be overwritten with a different key.
+    ///
+    /// A journal from an earlier build may have its key under an older keychain name. Such a
+    /// key is only trusted if it actually opens `existingJournal`: any app could create an
+    /// item with an old-looking name, and a key it planted must never be used for a journal.
+    static func loadKey(account: String = "journal.key", existingJournal: Data?) throws -> SymmetricKey {
         let stored: String?
         do {
             stored = try Keychain.read(account)
         } catch {
             throw KeyError.unreadable
         }
-        if let stored, let data = Data(base64Encoded: stored), data.count == 32 {
-            return SymmetricKey(data: data)
+        if let key = stored.flatMap(decodeKey) { return key }
+
+        if let journal = existingJournal {
+            let candidates: [String]
+            do {
+                candidates = try Keychain.legacyValues(account)
+            } catch {
+                throw KeyError.unreadable
+            }
+            if let (value, key) = firstKey(in: candidates, opening: journal) {
+                Keychain.set(value, for: account)
+                return key
+            }
+            throw KeyError.missing
         }
-        guard allowCreate else { throw KeyError.missing }
         let key = SymmetricKey(size: .bits256)
         Keychain.set(key.withUnsafeBytes { Data($0) }.base64EncodedString(), for: account)
         return key
     }
 
+    static func decodeKey(_ stored: String) -> SymmetricKey? {
+        guard let data = Data(base64Encoded: stored), data.count == 32 else { return nil }
+        return SymmetricKey(data: data)
+    }
+
+    /// The first candidate that decrypts `journal`. AES-GCM authenticates, so only the key the
+    /// journal was really sealed with passes.
+    static func firstKey(in candidates: [String], opening journal: Data) -> (String, SymmetricKey)? {
+        for value in candidates {
+            guard let key = decodeKey(value),
+                  (try? JournalCipher(key: key).openData(journal)) != nil else { continue }
+            return (value, key)
+        }
+        return nil
+    }
+
     func seal(_ entries: [JournalEntry]) throws -> Data {
         // Default date encoding keeps full precision, so entries round-trip exactly.
-        let plain = try JSONEncoder().encode(entries)
+        try sealData(JSONEncoder().encode(entries))
+    }
+
+    func open(_ data: Data) throws -> [JournalEntry] {
+        try JSONDecoder().decode([JournalEntry].self, from: openData(data))
+    }
+
+    func sealData(_ plain: Data) throws -> Data {
         guard let combined = try AES.GCM.seal(plain, using: key).combined else {
             throw CocoaError(.fileWriteUnknown)
         }
         return combined
     }
 
-    func open(_ data: Data) throws -> [JournalEntry] {
-        let plain = try AES.GCM.open(AES.GCM.SealedBox(combined: data), using: key)
-        return try JSONDecoder().decode([JournalEntry].self, from: plain)
+    func openData(_ data: Data) throws -> Data {
+        try AES.GCM.open(AES.GCM.SealedBox(combined: data), using: key)
     }
 }

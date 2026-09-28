@@ -76,6 +76,7 @@ Switch to **Journal** with the Mood | Journal control at the top of the window.
 What's in it:
 - **Locked:** it opens with Touch ID or your Mac password. It locks itself when the Mac sleeps, the screen locks, or you've been away from the app for 5 minutes. **⌘L** locks it now.
 - **Encrypted on this Mac:** AES-GCM, with the key in your Keychain. Entries are only sent to Claude when you press **Suggest from my writing**, and only that entry.
+- **Recent moods too:** the moods you type are kept encrypted with the journal's key, so the list of recent moods on the Mood screen only appears once the journal is unlocked. A mood typed while it's locked stays in memory until the next unlock.
 - **Add log (⇧⌘L, from anywhere):** how the day's going on five steps (Awful · Rough · Okay · Good · Great) and a line. Saving gives a soft haptic and a "Logged" note, and today's square in the month chart ripples as it fills in.
 - **Write:** opens today's page for more; **⌘N** makes a new entry.
 - **From a mood:** **Save to journal** on results saves the mood, the mix and your 👍 songs as an entry.
@@ -88,10 +89,10 @@ What's in it:
 
 ## Zen corner
 
-A sand garden to rake when you need a minute. It isn't a picture: the sand is simulated as a surface of heights, lit from the top left.
-- **Raking:** the rake presses grooves where its tines pass and lifts ridges between them, and your pointer becomes the rake while you're over the sand.
-- **Stones:** they cast soft shadows and can't be raked through.
-- **Controls:** choose 3, 5 or 7 tines. **Smooth the sand** sweeps it flat again, and **Move stones** rearranges them.
+A karesansui-style gravel garden to rake when you need a minute. It isn't a picture: the gravel is simulated as a surface of heights, lit from the top left (moonlight in dark mode), with every pebble drawn.
+- **Raking:** each tine scoops a round-bottomed groove, and the gravel it moves builds the ridge beside it. Your pointer becomes the rake while you're over the garden.
+- **Ridges meet like real gravel:** crossing an old pattern cuts through it, but the old ridges still show faintly between the new tines. Pushed-out gravel forms a low lip along each stroke, and when you lift the rake, anything too steep slumps into the grooves.
+- **Controls:** choose 3, 5 or 7 tines. **Smooth the gravel** sweeps it flat again, and **Move stones** rearranges them.
 
 ## Welcome tour
 

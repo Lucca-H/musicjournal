@@ -5,9 +5,10 @@ import Security
 enum Keychain {
     static let service = "MusicJournal"
 
-    /// Earlier builds stored items under a service ending in one of these. They're found by
-    /// that ending (never by a full name) and copied across the first time they're needed;
-    /// the old item is left in place as a backup.
+    /// Earlier builds stored items under a service ending in one of these (found by that
+    /// ending, never by a full name). Nothing is adopted from them automatically: any app can
+    /// create an item with such a name, so only the journal uses them, and only for a key
+    /// that proves itself by opening the existing journal (see `JournalCipher.loadKey`).
     static let legacyServiceSuffixes = [".spothelper", ".musicjournal"]
 
     static func set(_ value: String, for account: String) {
@@ -45,14 +46,15 @@ enum Keychain {
             }
             return value
         case errSecItemNotFound:
-            return try adoptLegacy(account)
+            return nil
         default:
             throw ReadError.unreadable(status)
         }
     }
 
-    /// Copies an item saved under an earlier service name to the current one.
-    private static func adoptLegacy(_ account: String) throws -> String? {
+    /// Values stored for `account` under earlier service names. Untrusted: the caller must
+    /// check each one before using it. Throws only if matches exist but none could be read.
+    static func legacyValues(_ account: String) throws -> [String] {
         let search: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: account,
@@ -61,9 +63,11 @@ enum Keychain {
         ]
         var found: AnyObject?
         guard SecItemCopyMatching(search as CFDictionary, &found) == errSecSuccess,
-              let items = found as? [[String: Any]] else { return nil }
+              let items = found as? [[String: Any]] else { return [] }
         let services = items.compactMap { $0[kSecAttrService as String] as? String }
             .filter { name in name != service && legacyServiceSuffixes.contains { name.hasSuffix($0) } }
+        var values: [String] = []
+        var denied: OSStatus?
         for legacy in services {
             let query: [String: Any] = [
                 kSecClass as String: kSecClassGenericPassword,
@@ -74,17 +78,14 @@ enum Keychain {
             ]
             var result: AnyObject?
             let status = SecItemCopyMatching(query as CFDictionary, &result)
-            guard status == errSecSuccess else {
-                if status == errSecItemNotFound { continue }
-                throw ReadError.unreadable(status)
+            if status == errSecSuccess, let data = result as? Data, let value = String(data: data, encoding: .utf8) {
+                values.append(value)
+            } else if status != errSecItemNotFound {
+                denied = status
             }
-            guard let data = result as? Data, let value = String(data: data, encoding: .utf8) else {
-                throw ReadError.unreadable(status)
-            }
-            set(value, for: account)
-            return value
         }
-        return nil
+        if values.isEmpty, let denied { throw ReadError.unreadable(denied) }
+        return values
     }
 
     static func get(_ account: String) -> String? {

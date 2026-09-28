@@ -21,7 +21,14 @@ final class SandField {
     let width: Int
     let height: Int
     private(set) var heights: [Float]
-    private var grain: [Float]           // per-cell sand brightness: fine grain plus slow drifts
+    private var grain: [Float]           // slow tonal drift across the garden
+    /// The gravel: every cell belongs to one small pebble. These hold that pebble's colour,
+    /// the tilt of its surface at this cell, and how deep in the gap between pebbles it is.
+    private var pebbleTone: [Float]
+    private var pebbleTint: [Float]      // -1 cool grey … +1 warm grey
+    private var pebbleSlope: [SIMD2<Float>]
+    private var pebbleGap: [Float]       // 1 on a pebble, lower in the crevices between them
+    private var pebbleShine: [Float]     // quartz-like pebbles that catch the light
     private var kind: [Kind]
     private var islandHeight: [Float]    // stone and moss height above the sand, in cells
     private var islandTone: [Float]      // stone/moss surface colour variation
@@ -51,16 +58,76 @@ final class SandField {
         ambient = Array(repeating: 1, count: count)
         pixels = Array(repeating: 255, count: count * 4)
         strokeBase = Array(repeating: .nan, count: count)
+        pebbleTone = Array(repeating: 1, count: count)
+        pebbleTint = Array(repeating: 0, count: count)
+        pebbleSlope = Array(repeating: .zero, count: count)
+        pebbleGap = Array(repeating: 1, count: count)
+        pebbleShine = Array(repeating: 0, count: count)
         let drift = 90 / Float(max(width, 1)) * 6     // slow tonal drift, same look at any size
         for y in 0..<height {
             for x in 0..<width {
-                let fine = Float(rng.nextUnit())
                 let slow = Noise.fbm(Float(x) * drift / 90, Float(y) * drift / 90, seed: 11)
-                grain[y * width + x] = 0.975 + fine * 0.05 + (slow - 0.5) * 0.07
+                grain[y * width + x] = 1 + (slow - 0.5) * 0.06
             }
         }
+        layGravel()
         smoothAll()
         placeStones(Self.defaultStones(width: width, height: height))
+    }
+
+    // MARK: Gravel
+
+    /// Scatters pebbles over the garden: a jittered grid, each cell of it one pebble with its
+    /// own size, colour and roundness (like the crushed granite of a karesansui garden).
+    private func layGravel() {
+        let size = max(2.2, Float(width) / 350)             // pebble spacing, in cells
+        let cols = Int(Float(width) / size) + 2, rows = Int(Float(height) / size) + 2
+        struct Pebble { var centre: SIMD2<Float>; var radius: Float; var tone: Float; var tint: Float; var shine: Float }
+        var pebbles: [Pebble] = []
+        pebbles.reserveCapacity(cols * rows)
+        for gy in 0..<rows {
+            for gx in 0..<cols {
+                let jx = Float(rng.nextUnit()) - 0.5, jy = Float(rng.nextUnit()) - 0.5
+                let pick = Float(rng.nextUnit())
+                // Mostly pale granite; some mid grey, a few dark flecks, a few bright white.
+                let tone: Float = pick < 0.03 ? 0.5 + Float(rng.nextUnit()) * 0.12
+                    : pick < 0.12 ? 0.74 + Float(rng.nextUnit()) * 0.1
+                    : pick < 0.2 ? 1.05 + Float(rng.nextUnit()) * 0.04
+                    : 0.92 + Float(rng.nextUnit()) * 0.1
+                pebbles.append(Pebble(
+                    centre: SIMD2((Float(gx) + 0.5 + jx * 0.8) * size, (Float(gy) + 0.5 + jy * 0.8) * size),
+                    radius: size * (0.5 + Float(rng.nextUnit()) * 0.16),
+                    tone: tone,
+                    tint: Float(rng.nextUnit()) * 2 - 1,
+                    shine: rng.nextUnit() < 0.12 ? 1 : 0))
+            }
+        }
+        for y in 0..<height {
+            for x in 0..<width {
+                let p = SIMD2<Float>(Float(x) + 0.5, Float(y) + 0.5)
+                let gx = Int(p.x / size), gy = Int(p.y / size)
+                var best = Float.greatestFiniteMagnitude, second = Float.greatestFiniteMagnitude
+                var nearest = 0
+                for dy in -1...1 {
+                    for dx in -1...1 {
+                        let cx = gx + dx, cy = gy + dy
+                        guard cx >= 0, cy >= 0, cx < cols, cy < rows else { continue }
+                        let index = cy * cols + cx
+                        let d = simd_distance(p, pebbles[index].centre) / pebbles[index].radius
+                        if d < best { second = best; best = d; nearest = index }
+                        else if d < second { second = d }
+                    }
+                }
+                let pebble = pebbles[nearest]
+                let i = y * width + x
+                let v = (p - pebble.centre) / pebble.radius
+                pebbleSlope[i] = v * 0.38                     // a rounded top, facing outward
+                pebbleGap[i] = 0.72 + 0.28 * smoothstep(0, 0.3, second - best)
+                pebbleTone[i] = pebble.tone
+                pebbleTint[i] = pebble.tint
+                pebbleShine[i] = pebble.shine
+            }
+        }
     }
 
     // MARK: Raking
@@ -70,15 +137,32 @@ final class SandField {
     private var strokeBase: [Float]
     private var strokeCells: [Int] = []
     private var lastDirection: SIMD2<Float>?
+    private var strokeBox: (x: ClosedRange<Int>, y: ClosedRange<Int>)?
+    private var strokeTalus: Float = 0.35
 
-    /// Ends the current stroke; the next rake starts a new one.
+    /// Ends the current stroke: the gravel it moved settles, and the next rake starts a new
+    /// stroke. Settling once per stroke (not per drag event) keeps it even along the stroke.
     func endStroke() {
+        if let box = strokeBox {
+            let xs = max(0, box.x.lowerBound - 2)...min(width - 1, box.x.upperBound + 2)
+            let ys = max(0, box.y.lowerBound - 2)...min(height - 1, box.y.upperBound + 2)
+            settle(x: xs, y: ys, talus: strokeTalus)
+            markDirty(x: xs, y: ys)
+        }
+        strokeBox = nil
         for i in strokeCells { strokeBase[i] = .nan }
         strokeCells.removeAll(keepingCapacity: true)
         lastDirection = nil
     }
 
     /// Drags a rake with `tines` teeth `spacing` cells apart from `a` to `b` (cell coords).
+    ///
+    /// Each tine scoops a round-bottomed groove and the gravel it moves builds the ridge beside
+    /// it, so grooves and ridges hold the same amount of material. The ground under the rake
+    /// isn't simply replaced: between the tines some of the old pattern survives, so crossing
+    /// an earlier pattern leaves it faintly showing through. Gravel pushed past the outermost
+    /// tines piles into a low shoulder, and anything left steeper than gravel can hold slumps
+    /// (see `settle`), so crossings and stroke ends crumble naturally instead of cutting off.
     func rake(from a: SIMD2<Float>, to b: SIMD2<Float>, tines: Int, spacing: Float, depth: Float = 1, strength: Float = 0.85) {
         let delta = b - a
         let length = simd_length(delta)
@@ -86,12 +170,18 @@ final class SandField {
         let dir = delta / length
         let normal = SIMD2<Float>(-dir.y, dir.x)
         let half = Float(tines - 1) / 2 * spacing
-        let reach = half + spacing * 0.5
+        let shoulder = spacing * 0.45                     // where pushed-out gravel slopes back down
+        let reach = half + spacing * 0.5 + shoulder
         // At a bend the outside of the turn falls between two segments; fan the tines around
         // the joint there, like a rake pivoting, so the grooves stay continuous.
         // The gap is the wedge past the end of the previous segment and before this one.
         let previous = lastDirection
         lastDirection = dir
+
+        // Groove half-width as a share of the tine gap, and the ridge height that holds exactly
+        // the gravel the groove removed.
+        let g: Float = 0.45
+        let ridge = depth * g * .pi * .pi / (8 * (1 - g))
 
         let minX = max(0, Int((min(a.x, b.x) - reach - 1).rounded(.down)))
         let maxX = min(width - 1, Int((max(a.x, b.x) + reach + 1).rounded(.up)))
@@ -103,7 +193,8 @@ final class SandField {
             for x in minX...maxX {
                 let i = y * width + x
                 if kind[i] != .sand { continue }
-                let p = SIMD2<Float>(Float(x) + 0.5, Float(y) + 0.5) - a
+                let cell = SIMD2<Float>(Float(x) + 0.5, Float(y) + 0.5)
+                let p = cell - a
                 let along = simd_dot(p, dir)
                 var offset = simd_dot(p, normal)
                 if along < 0 {
@@ -114,23 +205,72 @@ final class SandField {
                 }
                 guard abs(offset) <= reach else { continue }
 
-                // Position across the rake: tines sit at whole numbers of `u`.
-                let u = (offset + half) / spacing
-                let r = abs(u - u.rounded()) * 2              // 0 at a tine, 1 between two
-                let target = -depth * cos(.pi * r)            // groove under a tine, ridge between
-
-                var weight = strength
+                // Hand-pulled tines never cut perfectly evenly.
+                let wobble = 0.9 + Noise.value(cell.x * 0.07, cell.y * 0.07, seed: 21) * 0.2
                 let outside = abs(offset) - half              // beyond the outermost tine
-                if outside > 0 { weight *= max(0, 1 - outside / (spacing * 0.5)) }
+                let u = (offset + half) / spacing
+                let r = outside > spacing * 0.5 ? 1 : abs(u - u.rounded()) * 2   // 0 at a tine, 1 between two
+                var target: Float
+                if r < g {
+                    let t = r / g
+                    target = -depth * wobble * (1 - t * t).squareRoot()          // round-bottomed groove
+                } else {
+                    target = ridge * wobble * sin(.pi / 2 * (r - g) / (1 - g))   // rounded crest
+                }
+
                 if strokeBase[i].isNaN {
                     strokeBase[i] = heights[i]
                     strokeCells.append(i)
                 }
                 let base = strokeBase[i]
-                heights[i] = base + (target - base) * weight
+                // The tine clears its groove; between tines a little of what was there remains.
+                let memory = r < g ? 0 : 0.18 * (r - g) / (1 - g)
+                var value = target + base * memory
+                var weight = strength
+                if outside > spacing * 0.5 {
+                    // The shoulder: a slightly raised lip of pushed-out gravel, easing back
+                    // down to the undisturbed ground.
+                    let t = min(1, (outside - spacing * 0.5) / shoulder)
+                    value = (ridge * 1.15 + base * 0.18) * (1 - t * t)
+                    weight *= 1 - t * t * t
+                }
+                heights[i] = base + (value - base) * weight
             }
         }
+        strokeTalus = depth * 6 / spacing
+        if let box = strokeBox {
+            strokeBox = (min(box.x.lowerBound, minX)...max(box.x.upperBound, maxX),
+                         min(box.y.lowerBound, minY)...max(box.y.upperBound, maxY))
+        } else {
+            strokeBox = (minX...maxX, minY...maxY)
+        }
         markDirty(x: minX...maxX, y: minY...maxY)
+    }
+
+    /// Gravel can't hold a slope steeper than `talus` (height per cell): where it is, some
+    /// slides to the lower neighbour. Moves are symmetric, so no gravel is made or lost.
+    private func settle(x xs: ClosedRange<Int>, y ys: ClosedRange<Int>, talus: Float) {
+        for _ in 0..<3 {
+            var moved = false
+            for y in ys {
+                for x in xs {
+                    let i = y * width + x
+                    guard kind[i] == .sand else { continue }
+                    for (nx, ny) in [(x + 1, y), (x, y + 1)] where nx < width && ny < height {
+                        let j = ny * width + nx
+                        guard kind[j] == .sand else { continue }
+                        let diff = heights[i] - heights[j]
+                        let excess = abs(diff) - talus
+                        guard excess > 0 else { continue }
+                        let shift = (diff > 0 ? excess : -excess) * 0.25
+                        heights[i] -= shift
+                        heights[j] += shift
+                        moved = true
+                    }
+                }
+            }
+            if !moved { break }
+        }
     }
 
     /// Flattens columns `from..<to`, as if smoothed by a board, leaving only a faint,
@@ -324,12 +464,12 @@ final class SandField {
         var sunAmount: Float, skyAmount: Float
 
         static let day = Palette(
-            sand: SIMD3(0.95, 0.91, 0.84), stone: SIMD3(0.50, 0.49, 0.47),
+            sand: SIMD3(0.98, 0.97, 0.94), stone: SIMD3(0.50, 0.49, 0.47),
             moss: SIMD3(0.56, 0.62, 0.36), mossDeep: SIMD3(0.33, 0.43, 0.25),
             sun: SIMD3(1.0, 0.95, 0.87), sky: SIMD3(0.80, 0.86, 1.0),
             sunAmount: 0.78, skyAmount: 0.36)
         static let night = Palette(
-            sand: SIMD3(0.66, 0.65, 0.62), stone: SIMD3(0.30, 0.30, 0.31),
+            sand: SIMD3(0.70, 0.70, 0.71), stone: SIMD3(0.30, 0.30, 0.31),
             moss: SIMD3(0.50, 0.60, 0.40), mossDeep: SIMD3(0.28, 0.38, 0.27),
             sun: SIMD3(0.80, 0.83, 0.92), sky: SIMD3(0.28, 0.30, 0.36),
             sunAmount: 0.72, skyAmount: 0.45)
@@ -400,14 +540,20 @@ final class SandField {
                     let h = heights[i]
                     let hl = heights[y * width + left], hr = heights[y * width + right]
                     let hu = heights[up * width + x], hd = heights[down * width + x]
-                    let n = simd_normalize(SIMD3(-(hr - hl) * slope, -(hd - hu) * slope, 1))
+                    // The raked shape, plus each pebble's own rounded top.
+                    let pebble = pebbleSlope[i]
+                    let n = simd_normalize(SIMD3(-(hr - hl) * slope + pebble.x, -(hd - hu) * slope + pebble.y, 1))
                     // Wrapped diffuse keeps the shaded side of each ridge soft, not black.
-                    let diffuse = max(0, (simd_dot(n, light) + 0.2) / 1.2)
-                    // Sand collects light on crests and a touch of shade in the grooves.
+                    let diffuse = max(0, (simd_dot(n, light) + 0.15) / 1.15)
+                    // Gravel collects light on crests and a touch of shade in the grooves.
                     let curvature = (hl + hr + hu + hd - 4 * h) * slope
                     let cavity = 1 - min(0.12, max(-0.06, curvature * 0.35))
-                    let albedo = p.sand * grain[i]
-                    color = albedo * cavity * (p.sun * diffuse * sunlight[i] * p.sunAmount + p.sky * ambient[i] * p.skyAmount)
+                    let tint = pebbleTint[i] * 0.025
+                    let albedo = p.sand * SIMD3(1 + tint, 1, 1 - tint) * pebbleTone[i] * grain[i]
+                    let gap = pebbleGap[i]
+                    let glint = pebbleShine[i] * pow(max(0, simd_reflect(-light, n).z), 24) * 0.25 * sunlight[i]
+                    color = albedo * cavity * gap * (p.sun * diffuse * sunlight[i] * p.sunAmount
+                        + p.sky * ambient[i] * p.skyAmount) + p.sun * glint
                 }
                 // A faint vignette settles the eye toward the middle.
                 let vx = (Float(x) - cx) / cx, vy = (Float(y) - cy) / cy

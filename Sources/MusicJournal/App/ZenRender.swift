@@ -23,6 +23,11 @@ enum ZenRender {
             let x = Float(i) * 5 * k
             return SIMD2(x, (205 + sin(x / k / 30) * 14) * k)
         })
+        // A stroke across the top rows and down through the wave, to show how ridges meet.
+        stroke(field, spacing: spacing, points: (0...60).map { i in
+            let t = Float(i) / 60
+            return SIMD2((250 + t * 60) * k, (10 + t * 235) * k)
+        })
         // Speed check: one rake segment plus a full redraw, as happens on every drag event.
         let clock = ContinuousClock()
         let start = clock.now

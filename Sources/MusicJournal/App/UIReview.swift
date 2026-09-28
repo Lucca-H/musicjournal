@@ -23,11 +23,11 @@ enum UIReview {
         model.taste = .empty
         model.phase = .ready
         model.claudeCheck = .ready
-        model.recentMoods = [
+        model.journal.showMoodsForReview([
             RecentMood(text: "exhausted", date: Date().addingTimeInterval(-3_600 * 2)),
             RecentMood(text: "calm but a little restless", date: Date().addingTimeInterval(-86_400)),
             RecentMood(text: "sunday morning, slow and bright", date: Date().addingTimeInterval(-86_400 * 3)),
-        ]
+        ])
 
         if state.hasPrefix("welcome-"), let n = Int(state.dropFirst("welcome-".count)) {
             model.welcomeStep = n

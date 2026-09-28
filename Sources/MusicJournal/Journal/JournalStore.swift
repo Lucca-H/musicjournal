@@ -12,13 +12,27 @@ final class JournalStore {
     private(set) var entries: [JournalEntry] = []
     var selectedID: JournalEntry.ID?
     private(set) var lastError: String?
+    /// Moods you've typed, newest first (up to 8). Kept encrypted beside the journal with the
+    /// same key, so like the journal they can only be read once it's unlocked.
+    private(set) var recentMoods: [RecentMood] = []
+    /// Moods typed while the journal is locked: held in memory only, saved on the next unlock.
+    private var pendingMoods: [RecentMood] = []
+    /// What the mood screen shows: the saved list when unlocked, this session's when locked.
+    var visibleRecentMoods: [RecentMood] { isLocked ? pendingMoods : recentMoods }
 
     /// Asks the user to prove it's them. Replaced in tests.
     typealias Authenticator = @MainActor () async -> Result<Void, Error>
 
     private let fileURL: URL
-    /// Given whether a journal file already exists (a new key may only be created if not).
-    private let cipher: (_ journalExists: Bool) throws -> JournalCipher
+    private var moodsURL: URL {
+        fileURL.deletingLastPathComponent()
+            .appendingPathComponent(fileURL.deletingPathExtension().lastPathComponent + "-moods.sealed")
+    }
+    /// Given the existing journal, if any: a new key may only be created when there's none,
+    /// and a key from an earlier build is only trusted if it opens this journal.
+    private let cipher: (_ existingJournal: Data?) throws -> JournalCipher
+    /// Unencrypted mood history left by earlier builds: moved in on unlock, then erased.
+    private let legacyMoods: PlaintextMoodHistory
     private let authenticate: Authenticator
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     /// The key, read from the Keychain once per unlock and forgotten on lock. Saving reuses
@@ -30,14 +44,16 @@ final class JournalStore {
 
     init(
         fileURL: URL = JournalStore.defaultFileURL,
-        cipher: @escaping (_ journalExists: Bool) throws -> JournalCipher = { exists in
-            JournalCipher(key: try JournalCipher.loadKey(allowCreate: !exists))
+        cipher: @escaping (_ existingJournal: Data?) throws -> JournalCipher = { existing in
+            JournalCipher(key: try JournalCipher.loadKey(existingJournal: existing))
         },
         authenticate: @escaping Authenticator = JournalStore.deviceOwnerAuthentication,
+        legacyMoods: PlaintextMoodHistory = .none,
         observeSystemEvents: Bool = true
     ) {
         self.fileURL = fileURL
         self.cipher = cipher
+        self.legacyMoods = legacyMoods
         self.authenticate = authenticate
         if observeSystemEvents { observeLockTriggers() }
     }
@@ -148,8 +164,51 @@ final class JournalStore {
         flush()
         activeCipher = nil
         entries = []
+        recentMoods = []
         selectedID = nil
         isLocked = true
+    }
+
+    // MARK: Recent moods
+
+    func rememberMood(_ text: String) {
+        let mood = RecentMood(text: text, date: Date())
+        if isLocked {
+            pendingMoods = RecentMood.merged([mood], pendingMoods)
+        } else {
+            recentMoods = RecentMood.merged([mood], recentMoods)
+            saveMoods()
+        }
+    }
+
+    /// UI review only: shows sample moods without saving them anywhere.
+    func showMoodsForReview(_ moods: [RecentMood]) {
+        pendingMoods = moods
+    }
+
+    private func loadMoods(with active: JournalCipher) {
+        let saved = (try? Data(contentsOf: moodsURL))
+            .flatMap { try? active.openData($0) }
+            .flatMap { try? JSONDecoder().decode([RecentMood].self, from: $0) } ?? []
+        let legacy = legacyMoods.load()
+        recentMoods = RecentMood.merged(pendingMoods, saved, legacy)
+        pendingMoods = []
+        // Save first; erase the unencrypted copies only once they're safely stored.
+        let stored = recentMoods == saved || saveMoods()
+        if stored, !legacy.isEmpty { legacyMoods.erase() }
+    }
+
+    @discardableResult
+    private func saveMoods() -> Bool {
+        guard let active = activeCipher else { return false }
+        do {
+            let data = try active.sealData(JSONEncoder().encode(recentMoods))
+            try data.write(to: moodsURL, options: [.atomic, .completeFileProtection])
+            return true
+        } catch {
+            lastError = "Couldn't save your recent moods: \(error.localizedDescription)"
+            return false
+        }
     }
 
     // MARK: Editing
@@ -182,11 +241,12 @@ final class JournalStore {
     // MARK: Storage
 
     private func load() throws -> [JournalEntry] {
-        let exists = FileManager.default.fileExists(atPath: fileURL.path)
-        let active = try cipher(exists)
+        let existing = FileManager.default.fileExists(atPath: fileURL.path) ? try Data(contentsOf: fileURL) : nil
+        let active = try cipher(existing)
+        let entries = try existing.map(active.open) ?? []
         activeCipher = active
-        guard exists else { return [] }
-        return try active.open(Data(contentsOf: fileURL))
+        loadMoods(with: active)
+        return entries
     }
 
     /// Debounced so typing doesn't rewrite the file on every keystroke.

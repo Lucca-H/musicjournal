@@ -41,7 +41,7 @@ struct WelcomeFlow: View {
         }
         .padding(36)
         .frame(width: 580)
-        .glassEffect(.regular, in: .rect(cornerRadius: 34))
+        .glassEffect(.regular, in: .rect(cornerRadius: 32))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.easeInOut(duration: 0.28), value: step)
     }
@@ -106,7 +106,7 @@ private struct StepHeader: View {
     var body: some View {
         VStack(spacing: 8) {
             Text(title)
-                .font(.system(size: 30, weight: .regular, design: .serif))
+                .font(Theme.Serif.page)
             Text(subtitle)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -124,7 +124,7 @@ private struct WelcomeStep: View {
                 .shadow(color: .black.opacity(0.25), radius: 16, y: 8)
             VStack(spacing: 10) {
                 Text("MusicJournal")
-                    .font(.system(size: 40, weight: .regular, design: .serif))
+                    .font(Theme.Serif.display)
                 Text("Tell it how you feel. Get the music for it.\nKeep the days that mattered.")
                     .font(.title3)
                     .foregroundStyle(.secondary)
@@ -147,7 +147,7 @@ private struct HowItWorksStep: View {
                 row("book.closed", "Keep a journal",
                     "Add a quick log or write more, save the songs that stuck, and watch your month fill with colour.")
                 row("leaf", "Take a breath",
-                    "The Zen corner has a sand garden and a rake, for when you just need a minute.")
+                    "The Zen corner has a gravel garden and a rake, for when you just need a minute.")
             }
             .frame(maxWidth: 420)
         }

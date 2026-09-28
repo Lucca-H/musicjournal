@@ -20,7 +20,7 @@ struct QuickLogSheet: View {
         VStack(spacing: 22) {
             VStack(spacing: 4) {
                 Text("Add a log")
-                    .font(.system(size: 26, weight: .regular, design: .serif))
+                    .font(Theme.Serif.sheet)
                 Text(TimeOfDay.describe())
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -36,18 +36,18 @@ struct QuickLogSheet: View {
                     }
                 }
             }
-            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: changingDay)
+            .animation(.spring(response: 0.35, dampingFraction: 0.9), value: changingDay)
 
             TextField("What happened? A line is enough.", text: $text, axis: .vertical)
                 .textFieldStyle(.plain)
-                .font(.system(size: 15, design: .serif))
+                .font(Theme.Serif.note)
                 .lineLimit(3...6)
                 .focused($focused)
                 .onSubmit(save)
                 .padding(14)
-                .background(Theme.surface(scheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(Theme.surface(scheme), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .strokeBorder(focused ? Theme.accent.opacity(0.5) : Theme.hairline(scheme))
                 )
 
@@ -87,7 +87,7 @@ struct LoggedToast: View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(Theme.accent)
-                .symbolEffect(.bounce, value: drawn)
+                .symbolEffect(.pulse, options: .nonRepeating, value: drawn)
             Text(text)
                 .font(.callout)
         }

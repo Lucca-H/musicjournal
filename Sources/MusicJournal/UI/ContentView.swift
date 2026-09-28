@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         ZStack {
@@ -44,6 +45,8 @@ struct ContentView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9)))
             }
         }
+        // Warm text, never pure white or black; .secondary and .tertiary follow it.
+        .foregroundStyle(Theme.text(scheme))
         .sheet(isPresented: Bindable(model).showQuickLog) {
             QuickLogSheet()
         }
@@ -119,39 +122,6 @@ private struct MainScreen: View {
     }
 }
 
-/// Charcoal (or paper, in light mode) with soft blooms in the icon's mood tones. After a
-/// mood comes back, valence warms the blooms and energy makes them stronger.
-struct DuskBackground: View {
-    var energy: Double
-    var valence: Double
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        let dark = scheme == .dark
-        let base = dark ? Theme.charcoal : Theme.paper
-        let strength = (dark ? 0.30 : 0.35) + energy * 0.25
-        let primary = Theme.tone(forValence: valence).opacity(strength)
-        let secondary = Theme.tone(forValence: 1 - valence * 0.6).opacity(strength * 0.7)
-
-        MeshGradient(
-            width: 3, height: 3,
-            points: [
-                [0, 0], [0.5, 0], [1, 0],
-                [0, 0.5], [0.55, 0.5], [1, 0.5],
-                [0, 1], [0.5, 1], [1, 1],
-            ],
-            colors: [
-                primary, base, secondary,
-                base, base, base,
-                secondary, base, primary.opacity(strength * 0.6),
-            ]
-        )
-        .background(base)
-        .animation(.easeInOut(duration: 1.4), value: energy)
-        .animation(.easeInOut(duration: 1.4), value: valence)
-    }
-}
-
 struct StatusBanner: View {
     @Environment(AppModel.self) private var model
 
@@ -176,7 +146,7 @@ struct StatusBanner: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .glassEffect(.regular.tint(Theme.clay.opacity(0.18)), in: .rect(cornerRadius: 18))
+            .glassEffect(.regular.tint(Theme.clay.opacity(0.18)), in: .rect(cornerRadius: 16))
         }
     }
 }

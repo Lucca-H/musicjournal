@@ -27,6 +27,13 @@ final class SpotifyQueue {
     @ObservationIgnored private var originalItems: [Item] = []
     /// Songs in a row that wouldn't play; a full lap of them ends the queue, even on repeat.
     @ObservationIgnored private var skipsInARow = 0
+    @ObservationIgnored private var lastChangeInSpotify: Date?
+    /// Starts the next song a moment before this one ends, so there's no gap between them.
+    @ObservationIgnored private var earlyStart: Task<Void, Never>?
+    /// How long before the end the next song is started.
+    nonisolated static let leadTime: Double = 1
+    /// Spotify's own repeat setting before the queue started, to put back afterwards.
+    @ObservationIgnored private var spotifyWasRepeating: Bool?
     private(set) var isShuffled = UserDefaults.standard.bool(forKey: "queue.shuffle")
     private(set) var repeatMode = RepeatMode(rawValue: UserDefaults.standard.string(forKey: "queue.repeat") ?? "") ?? .off
     private(set) var index = 0
@@ -56,6 +63,8 @@ final class SpotifyQueue {
         self.sourceName = sourceName
         index = min(max(start, 0), items.count - 1)
         skipsInARow = 0
+        lastChangeInSpotify = nil
+        takeOverSpotifyRepeat()
         if isShuffled {
             var rng = SystemRandomNumberGenerator()
             (self.items, index) = QueueOrder.shuffled(items, keeping: index, using: &rng)
@@ -100,6 +109,39 @@ final class SpotifyQueue {
         if isPlaying { position = displayedPosition() }
         isPlaying.toggle()
         positionReadAt = Date()
+        cancelEarlyStart()
+    }
+
+    /// The next check is about a second away, which could be too late to start the next song
+    /// on time. So near the end, a timer is set for exactly `leadTime` before it finishes.
+    private func scheduleEarlyStart() {
+        guard earlyStart == nil,
+              let delay = Self.earlyStartDelay(position: position, duration: duration, isPlaying: isPlaying),
+              let song = current else { return }
+        earlyStart = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard let self, !Task.isCancelled else { return }
+            self.earlyStart = nil
+            // Still the same song, still playing: move on.
+            guard self.isActive, self.current == song, self.isPlaying else { return }
+            self.skipsInARow = 0
+            self.songEnded()
+        }
+    }
+
+    /// Seconds to wait before starting the next song, or nil if it isn't close enough yet
+    /// (a later check will get it) or isn't playing.
+    nonisolated static func earlyStartDelay(position: Double, duration: Double, isPlaying: Bool,
+                                            lead: Double = leadTime, window: Double = 2.5) -> Double? {
+        guard isPlaying, duration > lead + 1 else { return nil }
+        let remaining = duration - position
+        guard remaining <= window + lead, remaining > 0 else { return nil }
+        return max(0, remaining - lead)
+    }
+
+    private func cancelEarlyStart() {
+        earlyStart?.cancel()
+        earlyStart = nil
     }
 
     /// Where the song is now, estimated from the last check.
@@ -168,14 +210,34 @@ final class SpotifyQueue {
         finish(nil)
     }
 
+    /// Spotify only ever holds one song of the mix, so its own repeat would loop that song
+    /// and make its Next button restart it. The queue's repeat button does that job instead;
+    /// Spotify's setting is put back when the queue ends.
+    private func takeOverSpotifyRepeat() {
+        guard spotifyWasRepeating == nil,
+              !NSRunningApplication.runningApplications(withBundleIdentifier: SpotifyScript.bundleID).isEmpty,
+              case .success(let value) = SpotifyScript.run("tell application \"Spotify\" to return (repeating as string)") else { return }
+        spotifyWasRepeating = value == "true"
+        if value == "true" { _ = SpotifyScript.run("tell application \"Spotify\" to set repeating to false") }
+    }
+
+    private func restoreSpotifyRepeat() {
+        guard let was = spotifyWasRepeating else { return }
+        spotifyWasRepeating = nil
+        guard was, !NSRunningApplication.runningApplications(withBundleIdentifier: SpotifyScript.bundleID).isEmpty else { return }
+        _ = SpotifyScript.run("tell application \"Spotify\" to set repeating to true")
+    }
+
     private func pauseSpotify() {
         guard !NSRunningApplication.runningApplications(withBundleIdentifier: "com.spotify.client").isEmpty else { return }
         _ = SpotifyScript.run("tell application \"Spotify\" to pause")
     }
 
     private func finish(_ note: String?) {
+        cancelEarlyStart()
         isActive = false
         isPlaying = false
+        restoreSpotifyRepeat()
         pollTask?.cancel()
         pollTask = nil
         if let activity { ProcessInfo.processInfo.endActivity(activity) }
@@ -190,6 +252,7 @@ final class SpotifyQueue {
         let before = launching ? nil : (try? SpotifyScript.observe().get())?.trackURI
         tracker = QueueTracker(expectedID: item.id, expectedTitle: item.title, previousURI: before,
                                patience: launching ? 25 : 8)
+        cancelEarlyStart()
         position = 0
         duration = 0
         isPlaying = true
@@ -255,6 +318,7 @@ final class SpotifyQueue {
                 position = observation.position
                 duration = observation.durationMs / 1000
                 positionReadAt = Date()
+                scheduleEarlyStart()
             }
             if Self.debug { print("  poll: \(observation.state) \(observation.trackURI.suffix(8)) \(Int(observation.position))s → \(decision)") }
             switch decision {
@@ -267,6 +331,15 @@ final class SpotifyQueue {
                 if skipsInARow >= items.count {
                     finish("Spotify wouldn't play any of these songs.")
                 } else {
+                    next()
+                }
+            case .changedInSpotify:
+                // Spotify's Next button and media keys skip within the mix. If it happens again
+                // right after, you're choosing your own music, so the queue steps aside.
+                if let last = lastChangeInSpotify, Date().timeIntervalSince(last) < 20 {
+                    finish("You're playing something else in Spotify, so the MusicJournal queue stepped aside.")
+                } else {
+                    lastChangeInSpotify = Date()
                     next()
                 }
             case .stop(let reason): finish(reason)
@@ -293,6 +366,8 @@ struct QueueTracker {
         case advance
         /// Spotify never started the song (e.g. unavailable): move on.
         case skip
+        /// Something else started mid-song: usually Spotify's Next button or a media key.
+        case changedInSpotify
         case stop(String)
     }
 
@@ -366,7 +441,7 @@ struct QueueTracker {
         if seenOurs {
             return couldHaveFinished(now: now)
                 ? .advance   // our song ended and Spotify autoplayed something
-                : .stop("You played something else in Spotify, so the MusicJournal queue stopped.")
+                : .changedInSpotify
         }
         // Spotify started a different song in place of ours: it can't play this one. Skip it
         // quickly rather than letting the stand-in play.

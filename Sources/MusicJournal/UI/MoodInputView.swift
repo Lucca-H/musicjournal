@@ -34,9 +34,9 @@ struct MoodInputView: View {
                     .focused($focused)
                     .onSubmit(submit)
                     .padding(16)
-                    .background(Theme.surface(scheme), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .background(Theme.surface(scheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .strokeBorder(focused ? Theme.accent.opacity(0.55) : Theme.hairline(scheme))
                     )
 
@@ -85,7 +85,8 @@ struct MoodInputView: View {
                 Label("Find music", systemImage: "sparkles")
                     .frame(minWidth: 180)
             }
-            .buttonStyle(.glassProminent)
+            // Once there are results, playing them is the screen's main action.
+            .primaryAction(model.recommendation == nil)
             .controlSize(.large)
             .keyboardShortcut(.return, modifiers: .command)
             .disabled(!canSubmit)
@@ -138,7 +139,7 @@ struct MoodInputView: View {
                             HStack(spacing: 6) {
                                 Text(mood.text.truncated(to: 36))
                                 if let time = mood.relativeTime(now: context.date) {
-                                    Text(time).foregroundStyle(.tertiary)
+                                    Text(time).font(Theme.smallPrint).foregroundStyle(.tertiary)
                                 }
                             }
                         }

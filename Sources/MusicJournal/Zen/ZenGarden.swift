@@ -54,6 +54,7 @@ final class ZenGarden {
     func endStroke() {
         last = nil
         field.endStroke()
+        render()
     }
 
     /// Sweeps the garden flat from left to right, like drawing a board across it.

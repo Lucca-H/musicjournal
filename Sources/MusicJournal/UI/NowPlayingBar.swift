@@ -14,7 +14,7 @@ struct NowPlayingBar: View {
                     HStack(spacing: 12) {
                         Artwork(url: item.imageURL, symbol: "music.note")
                             .frame(width: 40, height: 40)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                         VStack(alignment: .leading, spacing: 3) {
                             Text(item.title)
                                 .lineLimit(1)
@@ -57,7 +57,7 @@ struct NowPlayingBar: View {
                     HStack(spacing: 5) {
                         Image(systemName: "list.bullet")
                         Text("\(queue.index + 1) of \(queue.items.count)")
-                            .monospacedDigit()
+                            .font(Theme.smallPrint)
                     }
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -162,8 +162,7 @@ private struct ProgressLine: View {
                 }
                 .frame(height: 3)
                 Text(queue.duration > 0 ? Self.time(queue.displayedPosition(at: context.date)) : "–:––")
-                    .font(.caption2)
-                    .monospacedDigit()
+                    .font(Theme.smallPrint)
                     .foregroundStyle(.tertiary)
                     .frame(width: 30, alignment: .trailing)
             }
@@ -184,7 +183,7 @@ private struct UpNextList: View {
         let queue = model.queue
         VStack(alignment: .leading, spacing: 8) {
             Text(queue.sourceName)
-                .font(.system(.headline, design: .serif))
+                .font(Theme.Serif.small)
                 .padding(.horizontal, 12)
                 .padding(.top, 12)
             ScrollViewReader { proxy in
@@ -201,7 +200,7 @@ private struct UpNextList: View {
                                             Image(systemName: queue.isPlaying ? "speaker.wave.2.fill" : "pause.fill")
                                                 .foregroundStyle(Theme.accent)
                                         } else {
-                                            Text("\(i + 1)").monospacedDigit()
+                                            Text("\(i + 1)").font(Theme.smallPrint)
                                         }
                                     }
                                     .font(.caption)
@@ -222,7 +221,7 @@ private struct UpNextList: View {
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 6)
                                 .background(isCurrent ? Theme.accent.opacity(0.12) : .clear,
-                                            in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                            in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)

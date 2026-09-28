@@ -17,9 +17,9 @@ struct MultilineField: View {
                 .frame(minHeight: 44, maxHeight: 110)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 6)
-                .background(Theme.surface(scheme), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(Theme.surface(scheme), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .strokeBorder(Theme.hairline(scheme))
                 )
                 .overlay(alignment: .topLeading) {
