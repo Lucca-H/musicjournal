@@ -497,7 +497,7 @@ final class AppModel {
         let entry = JournalEntry(text: trimmed)
         withAnimation(.spring(response: 0.45, dampingFraction: 0.9)) {
             journal.add(entry)
-            if let rating { journal.setDayRating(rating, from: entry.id) }
+            if let rating { journal.setDayRating(rating, on: entry.createdAt) }
         }
         celebrateLog("Logged · \(TimeOfDay.describe(entry.createdAt))", day: entry.createdAt)
     }
@@ -508,6 +508,35 @@ final class AppModel {
         lastLoggedDay = day
         logPulse += 1
         showToast(message)
+    }
+
+    // MARK: How was the day?
+
+    /// Days you've answered "Not now" for, so they aren't asked again.
+    private(set) var dismissedDayPrompts = Set(UserDefaults.standard.stringArray(forKey: "dayPrompt.dismissed") ?? [])
+
+    /// The day to ask about right now, if any (see `DayPrompt`). Nothing while locked.
+    func dayToRate(now: Date = Date()) -> Date? {
+        guard !journal.isLocked else { return nil }
+        return DayPrompt.day(
+            now: now,
+            isConfirmed: { self.journal.isDayConfirmed(on: $0) },
+            hasEntries: { !self.journal.entries(on: $0).isEmpty },
+            dismissed: dismissedDayPrompts)
+    }
+
+    func rateDay(_ rating: DayRating?, on day: Date) {
+        withAnimation(.smooth(duration: 0.4)) {
+            journal.setDayRating(rating, on: day)
+        }
+        if let rating { celebrateLog("\(rating.article) \(rating.label.lowercased()) day", day: day) }
+    }
+
+    func dismissDayPrompt(_ day: Date) {
+        dismissedDayPrompts.insert(DayPrompt.key(day))
+        let recent = dismissedDayPrompts.sorted().suffix(30)
+        dismissedDayPrompts = Set(recent)
+        UserDefaults.standard.set(Array(recent), forKey: "dayPrompt.dismissed")
     }
 
     /// A quiet note that rises from the bottom for a couple of seconds.
@@ -810,9 +839,9 @@ final class AppModel {
                     entry.feelingIDs = ids
                     entry.feelingNote = result.why.trimmingCharacters(in: .whitespacesAndNewlines).truncated(to: 160)
                 }
-                // Claude only rates the day if you haven't: your own answer always stands.
-                if journal.dayRating(on: entry.createdAt) == nil, let rating = DayRating(rawValue: result.day) {
-                    journal.setDayRating(rating, from: id)
+                // Claude's rating is only a guess: your own answer always stands.
+                if let rating = DayRating(rawValue: result.day) {
+                    journal.guessDayRating(rating, from: id)
                 }
                 Haptics.success()
             } catch {

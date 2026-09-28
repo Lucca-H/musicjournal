@@ -88,25 +88,46 @@ final class JournalStore {
         return values.reduce(0, +) / Double(values.count)
     }
 
-    /// The day's answer to "How was the day?", if it's been given in any of its entries.
+    /// The day's answer to "How was the day?": yours if you've given one, else a guess
+    /// (from a saved mood), else nil.
     func dayRating(on day: Date, calendar: Calendar = .current) -> DayRating? {
-        valence(on: day, calendar: calendar).map(DayRating.init(valence:))
+        let rated = entries(on: day, calendar: calendar).filter { $0.valence != nil }
+        let chosen = rated.filter { $0.dayRatingGuessed != true }
+        let pool = chosen.isEmpty ? rated : chosen
+        guard !pool.isEmpty else { return nil }
+        return DayRating(valence: pool.compactMap(\.valence).reduce(0, +) / Double(pool.count))
     }
 
-    /// Whether this is the day's first entry: the only one that asks how the day went.
-    func isFirstOfDay(_ id: JournalEntry.ID, calendar: Calendar = .current) -> Bool {
-        guard let entry = entries.first(where: { $0.id == id }) else { return false }
-        return entries(on: entry.createdAt, calendar: calendar).last?.id == id
+    /// Whether you've answered for this day yourself (a guess doesn't count).
+    func isDayConfirmed(on day: Date, calendar: Calendar = .current) -> Bool {
+        entries(on: day, calendar: calendar).contains { $0.valence != nil && $0.dayRatingGuessed != true }
     }
 
-    /// Rates the whole day from one of its entries. A day has one answer, so the rating
-    /// moves to this entry and the day's other entries let go of theirs.
-    func setDayRating(_ rating: DayRating?, from id: JournalEntry.ID, calendar: Calendar = .current) {
-        guard let entry = entries.first(where: { $0.id == id }) else { return }
-        for other in entries(on: entry.createdAt, calendar: calendar) where other.id != id && other.valence != nil {
+    /// Your answer for a whole day. It lives on the day's newest entry; other entries let go
+    /// of theirs (guesses stay on their own entries but no longer count).
+    func setDayRating(_ rating: DayRating?, on day: Date, calendar: Calendar = .current) {
+        let dayEntries = entries(on: day, calendar: calendar)
+        for other in dayEntries where other.valence != nil && other.dayRatingGuessed != true {
             update(other.id) { $0.valence = nil }
         }
-        update(id) { $0.valence = rating?.valence }
+        guard let rating else { return }
+        if let target = dayEntries.first {
+            update(target.id) { $0.valence = rating.valence; $0.dayRatingGuessed = false }
+        } else {
+            // Nothing written that day: keep the answer in a quiet rating-only log, without
+            // opening it.
+            let moment = calendar.isDateInToday(day) ? Date()
+                : calendar.date(bySettingHour: 21, minute: 0, second: 0, of: day) ?? day
+            entries.append(JournalEntry(createdAt: moment, text: "", valence: rating.valence, dayRatingGuessed: false))
+            scheduleSave()
+        }
+    }
+
+    /// A guess at how the day went (from Claude reading an entry). Never overrides your answer.
+    func guessDayRating(_ rating: DayRating, from id: JournalEntry.ID, calendar: Calendar = .current) {
+        guard let entry = entries.first(where: { $0.id == id }),
+              !isDayConfirmed(on: entry.createdAt, calendar: calendar) else { return }
+        update(id) { $0.valence = rating.valence; $0.dayRatingGuessed = true }
     }
 
     /// How a day felt: up to three feelings across that day's entries, most frequent first

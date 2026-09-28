@@ -81,7 +81,7 @@ What's in it:
 - **Write:** opens today's page for more; **⌘N** makes a new entry.
 - **From a mood:** **Save to journal** on results saves the mood, the mix and your 👍 songs as an entry.
 - **Songs that stuck:** star songs from the mix, or add any song as "Title — Artist". **Play in Spotify** plays them.
-- **How was the day?** Awful to great on one scale, asked once a day: the day's first entry (or first quick log) asks it, and later entries just show a quiet "A good day · Change" line. A day has one answer, and it's what colours the month chart. Claude's suggestion only rates the day if you haven't.
+- **How was the day?** Awful to great on one scale, rated for the whole day, right on the day in the journal sidebar. It's asked once the day has mostly happened: from 5 pm about today, or the next morning (once) about yesterday if you wrote that day and didn't rate it. "Not now" skips that day; "Rate today" is always there if you want to answer early. Saving a mood gives a starting guess (shown as "guessed"), preselected so one tap confirms it; your own answer always wins, including over Claude's guess from "Suggest from my writing". The day's rating is what colours the month chart.
 - **Feelings (optional detail):** pick up to three of 14 feelings, each with its own muted colour: joyful, excited, loved, grateful, calm, hopeful, nostalgic, tired, numb, anxious, overwhelmed, sad, lonely, angry.
   - **Suggest from my writing** sends that one entry to Claude, which rates the day and picks feelings, with a one-line reason. It only runs when you press it, and you can change the picks.
   - Entries saved from a mood start with a feeling based on how Claude read that mood.

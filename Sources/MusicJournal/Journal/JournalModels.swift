@@ -25,6 +25,8 @@ struct JournalEntry: Codable, Hashable, Identifiable, Sendable {
     var text = ""
     var mixName: String?
     var valence: Double?
+    /// True when `valence` is only a guess (from a saved mood or Claude), not your answer.
+    var dayRatingGuessed: Bool?
     var energy: Double?
     /// Up to three feeling IDs (see `Feeling.all`), most prominent first. Optional so journals
     /// saved before feelings existed still open.
@@ -51,6 +53,10 @@ struct JournalEntry: Codable, Hashable, Identifiable, Sendable {
             .trimmingCharacters(in: .whitespaces) ?? ""
         if !firstLine.isEmpty { return firstLine }
         if let mood, !mood.isEmpty { return mood }
+        if let valence {
+            let rating = DayRating(valence: valence)
+            return "\(rating.article) \(rating.label.lowercased()) day"
+        }
         return "Untitled entry"
     }
 }
@@ -83,6 +89,7 @@ extension JournalEntry {
             mood: recommendation.mood,
             mixName: recommendation.plan.mixName,
             valence: recommendation.plan.valence,
+            dayRatingGuessed: true,
             energy: recommendation.plan.energy,
             // A starting feeling from how Claude read the mood; no extra request.
             feelingIDs: [Feeling.nearest(valence: recommendation.plan.valence, energy: recommendation.plan.energy).id],

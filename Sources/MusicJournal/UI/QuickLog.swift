@@ -11,6 +11,11 @@ struct QuickLogSheet: View {
     @FocusState private var focused: Bool
 
     private var todayRating: DayRating? { model.journal.dayRating(on: Date()) }
+    private var todayConfirmed: Bool { model.journal.isDayConfirmed(on: Date()) }
+    /// Only asked once the day has mostly happened (see `DayPrompt`), or if you ask to.
+    private var asking: Bool {
+        changingDay || model.dayToRate().map { Calendar.current.isDateInToday($0) } == true
+    }
 
     private var canSave: Bool {
         rating != nil || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -26,13 +31,23 @@ struct QuickLogSheet: View {
                     .foregroundStyle(.secondary)
             }
 
-            // Asked once a day: if today already has an answer, it's just a quiet line.
+            // Asked from the evening on; before that (or once answered) it's a quiet line.
             Group {
-                if let answered = todayRating, !changingDay {
-                    DayRatingSummary(current: answered) { changingDay = true }
+                if asking {
+                    VStack(spacing: 8) {
+                        DayRatingPicker(title: "How was the day?", current: rating ?? todayRating) { choice in
+                            // Tapping a guessed rating confirms it rather than clearing it.
+                            rating = choice == nil && !todayConfirmed ? todayRating : choice
+                        }
+                        if rating == nil, todayRating != nil, !todayConfirmed {
+                            Text("Guessed from your mood. Tap to confirm or change.")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
                 } else {
-                    DayRatingPicker(title: "How's the day?", current: rating ?? (changingDay ? todayRating : nil)) { choice in
-                        rating = choice
+                    DayRatingSummary(current: todayRating, guessed: !todayConfirmed, invitation: "Rate today") {
+                        changingDay = true
                     }
                 }
             }

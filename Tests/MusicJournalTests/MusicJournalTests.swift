@@ -1088,29 +1088,46 @@ private struct StubCatalog: MusicCatalog {
         #expect(journal.valence(on: noon.addingTimeInterval(-86_400 * 3)) == nil)
     }
 
-    @Test func theDayIsAskedOnceAndHasOneAnswer() async {
+    @Test func aDayHasOneAnswerAndCanBeRatedWithNothingWritten() async {
         let cipher = JournalCipher(key: .init(size: .bits256))
         let journal = JournalStore(
             fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("j-\(UUID().uuidString)"),
             cipher: { _ in cipher }, authenticate: { .success(()) }, observeSystemEvents: false)
         await journal.unlock()
         let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: Date())!
-        let first = journal.add(JournalEntry(createdAt: noon, text: "morning"))
-        let second = journal.add(JournalEntry(createdAt: noon.addingTimeInterval(3_600), text: "later"))
-        #expect(journal.isFirstOfDay(first))
-        #expect(!journal.isFirstOfDay(second))
+        journal.add(JournalEntry(createdAt: noon, text: "morning"))
+        journal.add(JournalEntry(createdAt: noon.addingTimeInterval(3_600), text: "later"))
         #expect(journal.dayRating(on: noon) == nil)
 
-        journal.setDayRating(.rough, from: first)
-        #expect(journal.dayRating(on: noon) == .rough)
-
-        // Changing it from a later entry replaces the answer rather than averaging two.
-        journal.setDayRating(.great, from: second)
+        journal.setDayRating(.rough, on: noon)
+        journal.setDayRating(.great, on: noon)                 // replaces, never averages
         #expect(journal.dayRating(on: noon) == .great)
         #expect(journal.entries.filter { $0.valence != nil }.count == 1)
-
-        journal.setDayRating(nil, from: second)
+        journal.setDayRating(nil, on: noon)
         #expect(journal.dayRating(on: noon) == nil)
+
+        // A day with nothing written gets a quiet rating-only log, titled by the rating.
+        let lastWeek = Calendar.current.date(byAdding: .day, value: -7, to: noon)!
+        let selected = journal.selectedID
+        journal.setDayRating(.good, on: lastWeek)
+        #expect(journal.dayRating(on: lastWeek) == .good)
+        #expect(journal.entries(on: lastWeek).first?.title == "A good day")
+        #expect(journal.selectedID == selected)                 // doesn't jump to it
+    }
+
+    @Test func claudesRatingIsOnlyAGuess() async {
+        let cipher = JournalCipher(key: .init(size: .bits256))
+        let journal = JournalStore(
+            fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("j-\(UUID().uuidString)"),
+            cipher: { _ in cipher }, authenticate: { .success(()) }, observeSystemEvents: false)
+        await journal.unlock()
+        let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: Date())!
+        let id = journal.add(JournalEntry(createdAt: noon, text: "long day"))
+        journal.guessDayRating(.okay, from: id)
+        #expect(journal.dayRating(on: noon) == .okay && !journal.isDayConfirmed(on: noon))
+        journal.setDayRating(.great, on: noon)
+        journal.guessDayRating(.awful, from: id)                 // never overrides your answer
+        #expect(journal.dayRating(on: noon) == .great)
     }
 
     @Test func suggestionSchemaAsksForADayRating() throws {
@@ -1410,5 +1427,40 @@ private struct StubCatalog: MusicCatalog {
         for rating in DayRating.allCases {
             #expect(Theme.blend(valence: rating.valence) == Theme.moodTones[rating.rawValue - 1])
         }
+    }
+}
+
+// MARK: - Day prompt
+
+@MainActor
+@Suite struct DayPromptTests {
+    private func at(_ h: Int) -> Date { Calendar.current.date(bySettingHour: h, minute: 0, second: 0, of: Date())! }
+
+    @Test func asksTonightOrAboutYesterdayNeverMidMorningForToday() {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let yesterday = cal.date(byAdding: .day, value: -1, to: today)!
+        let none: (Date) -> Bool = { _ in false }
+        #expect(DayPrompt.day(now: at(19), isConfirmed: none, hasEntries: none, dismissed: []) == today)
+        #expect(DayPrompt.day(now: at(10), isConfirmed: none, hasEntries: none, dismissed: []) == nil)
+        #expect(DayPrompt.day(now: at(10), isConfirmed: none, hasEntries: { _ in true }, dismissed: []) == yesterday)
+        #expect(DayPrompt.day(now: at(1), isConfirmed: none, hasEntries: none, dismissed: []) == yesterday)
+        #expect(DayPrompt.day(now: at(19), isConfirmed: { _ in true }, hasEntries: none, dismissed: []) == nil)
+        #expect(DayPrompt.day(now: at(19), isConfirmed: none, hasEntries: none, dismissed: [DayPrompt.key(today)]) == nil)
+    }
+
+    @Test func aGuessCountsUntilYouAnswer() async {
+        let cipher = JournalCipher(key: .init(size: .bits256))
+        let journal = JournalStore(
+            fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("j-\(UUID().uuidString)"),
+            cipher: { _ in cipher }, authenticate: { .success(()) }, observeSystemEvents: false)
+        await journal.unlock()
+        let noon = at(12)
+        journal.add(JournalEntry(createdAt: noon, text: "mood", valence: DayRating.rough.valence, dayRatingGuessed: true))
+        #expect(journal.dayRating(on: noon) == .rough)
+        #expect(!journal.isDayConfirmed(on: noon))
+        journal.setDayRating(.great, on: noon)
+        #expect(journal.dayRating(on: noon) == .great)
+        #expect(journal.isDayConfirmed(on: noon))
     }
 }

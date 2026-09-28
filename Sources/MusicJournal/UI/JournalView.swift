@@ -105,16 +105,17 @@ private struct JournalSidebar: View {
 
             Divider().opacity(0.5)
 
+            // Checked every minute, so the question turns up on its own at 5 pm.
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+            let asking = model.dayToRate(now: context.date)
+            let groups = journal.entriesByDay
+            let days = groups.map(\.day) + (asking.map { day in groups.contains { $0.day == day } ? [] : [day] } ?? [])
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
-                    ForEach(journal.entriesByDay, id: \.day) { group in
+                    ForEach(days.sorted(by: >), id: \.self) { day in
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(dayLabel(group.day).uppercased())
-                                .font(.caption2.weight(.semibold))
-                                .tracking(1.1)
-                                .foregroundStyle(.tertiary)
-                                .padding(.leading, 10)
-                            ForEach(group.entries) { entry in
+                            DayHeader(day: day, label: dayLabel(day), asking: asking == day, now: context.date)
+                            ForEach(groups.first { $0.day == day }?.entries ?? []) { entry in
                                 EntryRow(entry: entry, selected: entry.id == journal.selectedID) {
                                     journal.selectedID = entry.id
                                 }
@@ -128,6 +129,7 @@ private struct JournalSidebar: View {
                 .padding(.vertical, 4)
             }
             .scrollIndicators(.never)
+            }
         }
         .padding(14)
         .glassEffect(.regular, in: .rect(cornerRadius: 24))
@@ -138,6 +140,94 @@ private struct JournalSidebar: View {
         if calendar.isDateInToday(day) { return "Today" }
         if calendar.isDateInYesterday(day) { return "Yesterday" }
         return day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+    }
+}
+
+/// A day's heading in the sidebar with how the day went: a small sky-coloured dot (marked
+/// "guessed" if it only came from a saved mood). When the day is due to be asked about,
+/// the question sits right here, on the day, rather than inside any one entry.
+private struct DayHeader: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.colorScheme) private var scheme
+    let day: Date
+    let label: String
+    let asking: Bool
+    let now: Date
+    @State private var changing = false
+
+    var body: some View {
+        let journal = model.journal
+        let rating = journal.dayRating(on: day)
+        let confirmed = journal.isDayConfirmed(on: day)
+        let calendar = Calendar.current
+        let tonight = calendar.isDateInToday(day)
+            || (calendar.isDateInYesterday(day) && calendar.component(.hour, from: now) < 4)
+        let open = asking || changing
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(label.uppercased())
+                    .font(.caption2.weight(.semibold))
+                    .tracking(1.1)
+                    .foregroundStyle(.tertiary)
+                Spacer(minLength: 4)
+                if let rating, !open {
+                    Button {
+                        withAnimation(.smooth(duration: 0.35)) { changing = true }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Circle()
+                                .fill(rating.color)
+                                .frame(width: 8, height: 8)
+                                .shadow(color: rating.color.opacity(0.6), radius: 4)
+                            Text(rating.label).font(.caption)
+                            if !confirmed { Text("guessed").font(Theme.smallPrint).foregroundStyle(.tertiary) }
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help(confirmed ? "Change how the day went" : "A guess from your mood. Click to answer.")
+                } else if rating == nil, calendar.isDateInToday(day), !open {
+                    Button("Rate today") {
+                        withAnimation(.smooth(duration: 0.35)) { changing = true }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.horizontal, 10)
+
+            if open {
+                VStack(alignment: .leading, spacing: 10) {
+                    DayRatingPicker(title: tonight ? "How was the day?" : "How was \(label.lowercased())?",
+                                    current: rating, size: 20, compact: true) { choice in
+                        // Tapping a guessed rating confirms it rather than clearing it.
+                        let answer = choice == nil && !confirmed ? rating : choice
+                        withAnimation(.smooth(duration: 0.35)) { changing = false }
+                        model.rateDay(answer, on: day)
+                    }
+                    HStack {
+                        if rating != nil, !confirmed {
+                            Text("Guessed from your mood. Right?")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                        Spacer(minLength: 0)
+                        Button(asking && !changing ? "Not now" : "Cancel") {
+                            if asking && !changing { model.dismissDayPrompt(day) }
+                            withAnimation(.smooth(duration: 0.35)) { changing = false }
+                        }
+                        .buttonStyle(.plain)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                    }
+                }
+                .padding(12)
+                .background(Theme.surface(scheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.hairline(scheme)))
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
     }
 }
 
@@ -208,7 +298,6 @@ private struct JournalEntryEditor: View {
     /// go, so keystrokes are never lost to a stale copy and the cursor stays put.
     @State private var draft = ""
     @State private var loadedDraft = false
-    @State private var changingDay = false
 
     private var entry: JournalEntry? { model.journal.entries.first { $0.id == entryID } }
 
@@ -217,7 +306,6 @@ private struct JournalEntryEditor: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 26) {
                     header(entry)
-                    dayRating(entry)
                     writingArea(entry)
                     feelingPicker(entry)
                     songs(entry)
@@ -279,26 +367,6 @@ private struct JournalEntryEditor: View {
                 .padding(.top, 6)
             }
         }
-    }
-
-    /// One scale from awful to great, asked once a day. The day's first entry asks it; once
-    /// it's answered (or on later entries) it shrinks to a quiet line you can change.
-    /// This is what colours the day in the month chart.
-    @ViewBuilder
-    private func dayRating(_ entry: JournalEntry) -> some View {
-        let current = model.journal.dayRating(on: entry.createdAt)
-        let asking = changingDay || (current == nil && model.journal.isFirstOfDay(entryID))
-        Group {
-            if asking {
-                DayRatingPicker(title: "How was the day?", current: current) { rating in
-                    model.journal.setDayRating(rating, from: entryID)
-                    changingDay = false
-                }
-            } else {
-                DayRatingSummary(current: current) { changingDay = true }
-            }
-        }
-        .animation(.spring(response: 0.35, dampingFraction: 0.9), value: asking)
     }
 
     /// Optional detail: up to three of fourteen feelings, as colour chips that wrap.
@@ -584,13 +652,17 @@ struct DayRatingPicker: View {
     let title: String
     let current: DayRating?
     var size: CGFloat = 24
+    /// Title above the circles, for narrow places like the journal sidebar.
+    var compact = false
     let choose: (DayRating?) -> Void
 
     var body: some View {
-        HStack(spacing: 18) {
+        let layout = compact ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(spacing: 18))
+        layout {
             Text(title)
-                .foregroundStyle(.secondary)
-            HStack(spacing: 14) {
+                .font(compact ? Theme.Serif.small : .body)
+                .foregroundStyle(compact ? .primary : .secondary)
+            HStack(spacing: compact ? 10 : 14) {
                 ForEach(DayRating.allCases) { rating in
                     let selected = current == rating
                     Button {
@@ -604,7 +676,7 @@ struct DayRatingPicker: View {
                                 .overlay(Circle().strokeBorder(Color.primary.opacity(selected ? 0.75 : 0), lineWidth: 2).padding(-3))
                                 .scaleEffect(selected ? 1.12 : 1)
                             Text(rating.label)
-                                .font(.caption)
+                                .font(compact ? .caption2 : .caption)
                                 .foregroundStyle(selected ? .primary : .tertiary)
                         }
                         .contentShape(Rectangle())
@@ -623,6 +695,9 @@ struct DayRatingPicker: View {
 /// the day hasn't been rated yet.
 struct DayRatingSummary: View {
     let current: DayRating?
+    /// The rating is only a guess (from a saved mood), not your answer yet.
+    var guessed = false
+    var invitation = "Rate the day"
     let change: () -> Void
 
     var body: some View {
@@ -631,7 +706,10 @@ struct DayRatingSummary: View {
                 Circle().fill(current.color).frame(width: 10, height: 10)
                 Text("\(current.article) \(current.label.lowercased()) day")
                     .foregroundStyle(.secondary)
-                Button("Change", action: change)
+                if guessed {
+                    Text("guessed").font(Theme.smallPrint).foregroundStyle(.tertiary)
+                }
+                Button(guessed ? "Answer" : "Change", action: change)
                     .buttonStyle(.plain)
                     .foregroundStyle(.tertiary)
             } else {
@@ -639,7 +717,7 @@ struct DayRatingSummary: View {
                     HStack(spacing: 8) {
                         Circle().strokeBorder(.tertiary, style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
                             .frame(width: 10, height: 10)
-                        Text("Rate the day")
+                        Text(invitation)
                     }
                 }
                 .buttonStyle(.plain)
