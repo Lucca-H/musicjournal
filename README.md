@@ -11,10 +11,11 @@ It works with a **free Spotify account** and needs no login.
 
 1. Download `MusicJournal-<version>.zip` from the [Releases](../../releases) page and unzip it.
 2. Drag **MusicJournal** into your Applications folder.
-3. Open it. The first time, macOS says it can't verify the developer, because the app isn't
-   notarized by Apple. Click **Done**, then open **System Settings → Privacy & Security**, scroll
-   down, and click **Open Anyway** next to MusicJournal. (Or right-click the app → **Open**.)
-   You only need to do this once.
+3. Open it. The first time, macOS says "Apple could not verify MusicJournal is free of malware",
+   because the app isn't notarized by Apple (that needs a paid developer account). Click **Done**
+   (not Move to Trash), then open **System Settings → Privacy & Security**, scroll down, click
+   **Open Anyway** next to MusicJournal, and confirm. You only need to do this once.
+   (Or in Terminal: `xattr -dr com.apple.quarantine /Applications/MusicJournal.app`.)
 4. When you first play a mix, macOS asks whether MusicJournal may control Spotify. Click **OK**.
 
 **You'll need:**
