@@ -94,6 +94,10 @@ A karesansui-style gravel garden to rake when you need a minute. It isn't a pict
 - **Ridges meet like real gravel:** crossing an old pattern cuts through it, but the old ridges still show faintly between the new tines. Pushed-out gravel forms a low lip along each stroke, and when you lift the rake, anything too steep slumps into the grooves.
 - **Controls:** choose 3, 5 or 7 tines. **Smooth the gravel** sweeps it flat again, and **Move stones** rearranges them.
 
+## Look and feel
+
+"Last Light": the twenty minutes after sunset. The window's sky follows your real evening: a clay glow at sunset that fades through violet, then only faint moonlight and stars after midnight, with the glow tinted by your mood. Titles and anything you write are set in Fraunces; the day scale runs from blue hour to afterglow. It stays still with Reduce Motion, and runs at a few frames a second (less in the background, none when hidden) to go easy on the battery. The full system is in [DESIGN.md](DESIGN.md).
+
 ## Welcome tour
 
 The first launch shows a short tour: how it works, a setup check (Claude Code signed in, Spotify app installed), optional taste, and the journal. Replay it from **Help → Welcome Tour**.
@@ -198,3 +202,5 @@ Sources/MusicJournal/
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+The app bundles the [Fraunces](https://github.com/undercasetype/Fraunces) typeface by the Fraunces Project Authors, under the SIL Open Font License 1.1 ([Resources/Fonts/OFL.txt](Resources/Fonts/OFL.txt)).

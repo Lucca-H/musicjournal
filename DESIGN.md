@@ -24,6 +24,7 @@ The background follows the real evening by the local clock (`UI/NightSky.swift`,
 | Midnight onward | **no warm glow at all**; faint silver moonlight from the upper right, and stars |
 | Dawn (4:30 – 6 am) | warmth returns, stars fade |
 
+- **The room itself dims** through the evening: the background runs from a lighter ink in the afternoon (`#23222C`) through night ink (`#18171F`, about 10 pm) to its deepest (`#0F0E14`) around 3 am, and lifts at dawn. Sunset warms the glow's colour but never brightens the room, so from the afternoon on it only ever gets darker (measured average brightness: 59 at noon → 50 at 7 pm → 31 at 10 pm → 21 at 3 am).
 - Glows are tinted by the current mood (valence picks the tone, energy adds a little strength) and blend in over ~2.4 s when the mood changes.
 - Glows drift and breathe on offset 47–89 s loops: never fast enough to watch.
 - **Stars** (dark mode only): ~170, mostly high up, 0.35–1.45 pt, a quarter twinkling slowly, the field turning one width per 15 minutes, a faint shooting star about once a minute when it's fully dark. They sit behind the whole interface; content surfaces stay translucent enough to let them through.

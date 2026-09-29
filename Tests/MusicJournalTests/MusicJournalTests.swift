@@ -1395,11 +1395,18 @@ private struct StubCatalog: MusicCatalog {
 
     @Test func sunsetGlowsAndMidnightIsOnlyMoonAndStars() {
         let sunset = at(19), late = at(1), noon = at(12)
-        #expect(sunset.warm > 0.9 && sunset.stars < 0.05 && sunset.moon == 0)
+        #expect(sunset.warm > 0.85 && sunset.stars < 0.05 && sunset.moon == 0)
         #expect(late.warm < 0.01 && late.horizon < 0.01)          // no warm glow at 1 am
         #expect(late.moon > 0.9 && late.stars > 0.9)              // just moonlight and stars
         #expect(noon.stars == 0 && noon.moon == 0 && noon.warm > 0)
         #expect(at(6, 30).stars < 0.05)                           // gone by dawn
+    }
+
+    @Test func theRoomOnlyGetsDarkerFromAfternoonToThreeAM() {
+        let times = [(15, 0), (17, 0), (18, 30), (20, 0), (21, 30), (23, 0), (0, 30), (2, 0), (3, 0)]
+        let dims = times.map { at($0.0, $0.1).dim }
+        for (a, b) in zip(dims, dims.dropFirst()) { #expect(b > a) }
+        #expect(at(9).dim < 0.05)                                  // and lifts again by morning
     }
 }
 

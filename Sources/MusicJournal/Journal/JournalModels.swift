@@ -131,24 +131,31 @@ struct JournalCipher: Sendable {
         } catch {
             throw KeyError.unreadable
         }
-        if let key = stored.flatMap(decodeKey) { return key }
-
-        if let journal = existingJournal {
-            let candidates: [String]
-            do {
-                candidates = try Keychain.legacyValues(account)
-            } catch {
-                throw KeyError.unreadable
-            }
-            if let (value, key) = firstKey(in: candidates, opening: journal) {
-                Keychain.set(value, for: account)
-                return key
-            }
-            throw KeyError.missing
+        // A brand-new journal always gets a fresh key: any value already stored could have
+        // been put there by another app. It must read back as ours, or nothing is created.
+        guard let journal = existingJournal else {
+            let key = SymmetricKey(size: .bits256)
+            let value = key.withUnsafeBytes { Data($0) }.base64EncodedString()
+            Keychain.set(value, for: account)
+            guard (try? Keychain.read(account)) == value else { throw KeyError.unreadable }
+            return key
         }
-        let key = SymmetricKey(size: .bits256)
-        Keychain.set(key.withUnsafeBytes { Data($0) }.base64EncodedString(), for: account)
-        return key
+
+        // An existing journal: use the stored key only if it really opens it.
+        if let value = stored, let key = firstKey(in: [value], opening: journal)?.1 { return key }
+
+        // Otherwise a key from an earlier build, again only if it opens this journal.
+        let candidates: [String]
+        do {
+            candidates = try Keychain.legacyValues(account)
+        } catch {
+            throw KeyError.unreadable
+        }
+        if let (value, key) = firstKey(in: candidates, opening: journal) {
+            Keychain.set(value, for: account)
+            return key
+        }
+        throw KeyError.missing
     }
 
     static func decodeKey(_ stored: String) -> SymmetricKey? {

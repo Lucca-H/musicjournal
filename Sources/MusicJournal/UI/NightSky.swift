@@ -11,22 +11,29 @@ struct Sky: Equatable {
     var horizon: Double   // the low glow along the bottom
     var moon: Double      // cool moonlight from the upper right
     var stars: Double
+    /// How far the room itself has dimmed: 0 in the afternoon, deepening steadily through
+    /// the evening to its darkest around 3 am, lifting again at dawn.
+    var dim: Double = 0
 
     static func at(_ date: Date, calendar: Calendar = .current) -> Sky {
         let parts = calendar.dateComponents([.hour, .minute], from: date)
         let clock = Double(parts.hour ?? 12) + Double(parts.minute ?? 0) / 60
         let e = clock < 7 ? clock + 24 : clock          // one evening: 7:00 … 30:59 (6:59 am)
         let dawn = smooth((e - 28.5) / 1.5)             // 4:30 → 6:00 am, the night lifts
+        let dim = smooth((e - 14.5) / 12.5) * (1 - dawn)
         if e < 17 {
-            return Sky(warm: 0.6, violet: 0, horizon: 0.3, moon: 0, stars: 0)
+            return Sky(warm: 0.8, violet: 0, horizon: 0.45, moon: 0, stars: 0, dim: dim)
         }
-        let dusk = e < 19 ? 0.6 + 0.4 * smooth((e - 17) / 2) : 1 - smooth((e - 19) / 5)
+        // Sunset warms the glow's colour more than its strength, so the room never gets
+        // brighter as the evening goes on: it only ever darkens.
+        let dusk = e < 19 ? 0.8 + 0.1 * smooth((e - 17) / 2) : 0.9 * (1 - smooth((e - 19) / 5))
         return Sky(
             warm: max(dusk, 0.6 * dawn),
             violet: smooth((e - 18) / 4) * (1 - dawn),
-            horizon: max(1 - smooth((e - 18.5) / 3.5), 0.3 * dawn),
+            horizon: max(0.45 * (1 - smooth((e - 17.5) / 4)), 0.3 * dawn),
             moon: smooth((e - 22.5) / 2) * (1 - dawn),
-            stars: smooth((e - 19.5) / 3) * (1 - dawn))
+            stars: smooth((e - 19.5) / 3) * (1 - dawn),
+            dim: dim)
     }
 
     static func smooth(_ x: Double) -> Double {
@@ -51,25 +58,44 @@ struct DuskBackground: View {
     @State private var from = Mood(energy: 0.4, valence: 0.5)
     @State private var to = Mood(energy: 0.4, valence: 0.5)
     @State private var changedAt = Date.distantPast
+    /// The sky moves slowly, so it only needs a few frames a second, and far fewer (or none)
+    /// when you're not looking: every frame also re-renders the glass drawn over it.
+    @State private var appActive = NSApp?.isActive ?? true
+    @State private var onScreen = true
+
+    private var frameInterval: Double { appActive ? 0.25 : 2 }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 15, paused: reduceMotion)) { context in
+        TimelineView(.animation(minimumInterval: frameInterval, paused: reduceMotion || !onScreen)) { context in
             let now = fixedDate ?? context.date
             let t = reduceMotion ? 0 : now.timeIntervalSinceReferenceDate
             let sky = Sky.at(now)
             let mood = blendedMood(at: now)
             ZStack {
+                Self.base(sky, dark: scheme == .dark)
                 glows(t: t, sky: sky, mood: mood)
                 if scheme == .dark {
                     StarField(time: t, visibility: sky.stars, still: reduceMotion)
+                    if !reduceMotion {
+                        ShootingStar(enabled: sky.stars > 0.6 && appActive && onScreen)
+                    }
                 }
                 vignette
             }
         }
-        .background(scheme == .dark ? Theme.charcoal : Theme.paper)
+        .background(scheme == .dark ? Theme.charcoal : Theme.paper)   // behind the first frame only
         .onAppear {
             to = Mood(energy: energy, valence: valence)
             from = to
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            appActive = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            appActive = false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeOcclusionStateNotification)) { _ in
+            onScreen = NSApp.windows.contains { $0.isVisible && $0.occlusionState.contains(.visible) }
         }
         .onChange(of: Mood(energy: energy, valence: valence)) { _, new in
             from = blendedMood(at: Date())
@@ -87,7 +113,7 @@ struct DuskBackground: View {
 
     private func glows(t: Double, sky: Sky, mood: Mood) -> some View {
         let dark = scheme == .dark
-        let base = dark ? Theme.charcoal : Theme.paper
+        let base = Self.base(sky, dark: dark)
         // Slow, offset loops (about a minute each), so nothing ever visibly repeats.
         func wave(_ period: Double, _ phase: Double) -> Double { sin(t / period * 2 * .pi + phase) }
         func float(_ x: Double) -> Float { Float(x) }
@@ -121,6 +147,13 @@ struct DuskBackground: View {
                 cool.opacity(strength * 0.35), warm.opacity(horizon), cool.opacity(strength * 0.9),
             ]
         )
+    }
+
+    /// The room's own colour, dimming with the evening: a lighter charcoal in the afternoon,
+    /// night ink by about 10 pm, deepest around 3 am. Light mode's paper dims a little too.
+    static func base(_ sky: Sky, dark: Bool) -> Color {
+        dark ? Theme.dayInk.mix(with: Theme.deepInk, by: sky.dim)
+             : Theme.paper.mix(with: Theme.duskPaper, by: sky.dim)
     }
 
     /// The edges of the room go dark first.
@@ -181,30 +214,51 @@ private struct StarField: View {
                                  with: .color(Self.starlight.opacity(alpha * 0.18)))
                 }
             }
-            drawShootingStar(in: context, size: size)
         }
         .allowsHitTesting(false)
     }
 
-    /// Roughly once a minute a faint streak crosses the upper sky, taking about a second.
-    private func drawShootingStar(in context: GraphicsContext, size: CGSize) {
-        guard !still, visibility > 0.6 else { return }
-        let period = 23.0
-        let k = Int(time / period)
-        let progress = time.truncatingRemainder(dividingBy: period) / 1.1
-        guard progress < 1, k % 3 == 1 else { return }
-        var rng = SplitMix64(seed: UInt64(truncatingIfNeeded: k))
-        let start = CGPoint(x: (0.15 + rng.nextUnit() * 0.6) * size.width, y: (0.05 + rng.nextUnit() * 0.25) * size.height)
-        let head = CGPoint(x: start.x + 140 * progress, y: start.y + 63 * progress)
-        let tail = CGPoint(x: head.x - 90, y: head.y - 40)
-        var path = Path()
-        path.move(to: tail)
-        path.addLine(to: head)
-        let fade = sin(progress * .pi) * visibility
-        context.stroke(path, with: .linearGradient(
-            Gradient(colors: [Self.starlight.opacity(0), Self.starlight.opacity(0.55 * fade)]),
-            startPoint: tail, endPoint: head),
-                       style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
+}
+
+/// Now and then, once it's properly dark, a faint streak crosses the upper sky in about a
+/// second. It's its own short animation, so the rest of the sky can stay at a few frames
+/// a second.
+private struct ShootingStar: View {
+    let enabled: Bool
+    @State private var fire = 0
+    @State private var origin = CGPoint(x: 0.4, y: 0.15)
+
+    private static let starlight = Color(red: 0.94, green: 0.90, blue: 0.85)
+
+    var body: some View {
+        KeyframeAnimator(initialValue: 0.0, trigger: fire) { progress in
+            Canvas { context, size in
+                guard progress > 0, progress < 1 else { return }
+                let start = CGPoint(x: origin.x * size.width, y: origin.y * size.height)
+                let head = CGPoint(x: start.x + 140 * progress, y: start.y + 63 * progress)
+                let tail = CGPoint(x: head.x - 90, y: head.y - 40)
+                var path = Path()
+                path.move(to: tail)
+                path.addLine(to: head)
+                let fade = sin(progress * .pi)
+                context.stroke(path, with: .linearGradient(
+                    Gradient(colors: [Self.starlight.opacity(0), Self.starlight.opacity(0.55 * fade)]),
+                    startPoint: tail, endPoint: head),
+                               style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
+            }
+        } keyframes: { _ in
+            LinearKeyframe(1.0, duration: 1.1)
+        }
+        .allowsHitTesting(false)
+        .task(id: enabled) {
+            guard enabled else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(Double.random(in: 45...80)))
+                guard !Task.isCancelled else { return }
+                origin = CGPoint(x: Double.random(in: 0.15...0.75), y: Double.random(in: 0.05...0.3))
+                fire += 1
+            }
+        }
     }
 }
 
@@ -214,7 +268,7 @@ private struct StarField: View {
 enum SkyRender {
     static func run(arguments: [String]) {
         let prefix = arguments.drop { $0 != "--sky-render" }.dropFirst().first ?? "sky"
-        for (hour, minute) in [(19, 0), (21, 30), (1, 0), (12, 0)] {
+        for (hour, minute) in [(12, 0), (16, 0), (17, 30), (19, 0), (20, 30), (22, 0), (23, 30), (1, 0), (3, 0)] {
             var parts = Calendar.current.dateComponents([.year, .month, .day], from: Date())
             parts.hour = hour; parts.minute = minute
             let date = Calendar.current.date(from: parts)!
@@ -227,7 +281,18 @@ enum SkyRender {
                   let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { continue }
             let path = "\(prefix)-\(String(format: "%02d%02d", hour, minute)).png"
             try? png.write(to: URL(fileURLWithPath: path))
-            print("Wrote \(path)")
+            // Average brightness (0–255) of the whole window, to check the evening darkens.
+            if let rep = NSBitmapImageRep(data: tiff) {
+                var total = 0.0, n = 0.0
+                for y in stride(from: 0, to: rep.pixelsHigh, by: 4) {
+                    for x in stride(from: 0, to: rep.pixelsWide, by: 4) {
+                        guard let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                        total += (0.2126 * c.redComponent + 0.7152 * c.greenComponent + 0.0722 * c.blueComponent) * 255
+                        n += 1
+                    }
+                }
+                print(String(format: "%02d:%02d  brightness %.1f", hour, minute, total / max(n, 1)))
+            }
         }
     }
 }

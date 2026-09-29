@@ -78,6 +78,8 @@ struct MusicJournalApp: App {
                     .keyboardShortcut("l", modifiers: .command)
                     .disabled(model.journal.isLocked)
             }
+            // Developer tools: only in debug builds, never in a release.
+            #if DEBUG
             CommandMenu("Debug") {
 
                 Button("Refresh Taste Profile") {
@@ -89,6 +91,7 @@ struct MusicJournalApp: App {
                 }
                 .disabled(model.accessMode != .spotifyAccount)
             }
+            #endif
         }
 
         Settings {

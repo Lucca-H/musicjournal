@@ -32,6 +32,11 @@ enum Theme {
     /// Paper (#ECE7DF), a touch dim, for light mode.
     static let paper = Color(red: 0.925, green: 0.906, blue: 0.875)
 
+    /// The background dims through the evening (see `Sky.dim`): afternoon ink → deep night.
+    static let dayInk = Color(red: 0.137, green: 0.133, blue: 0.173)       // #23222C
+    static let deepInk = Color(red: 0.059, green: 0.055, blue: 0.078)      // #0F0E14
+    static let duskPaper = Color(red: 0.867, green: 0.839, blue: 0.796)    // #DDD6CB
+
     // The evening glow: sunset clay and mauve deepening to night violet and blue.
     static let duskClay = Color(red: 0.788, green: 0.561, blue: 0.467)     // #C98F77
     static let duskMauve = Color(red: 0.592, green: 0.478, blue: 0.565)    // #977A90
