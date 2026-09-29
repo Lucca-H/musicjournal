@@ -69,6 +69,7 @@ struct SpotifyConnectorResolver: Sendable {
                 systemPrompt: Self.systemPrompt,
                 schema: Self.schema,
                 extraArguments: ["--tools", Self.searchTool, "--allowedTools", Self.searchTool],
+                model: ProcessInfo.processInfo.environment["MJ_LOOKUP_MODEL"],
                 effort: effort,
                 executableOverride: executableOverride,
                 timeout: timeout

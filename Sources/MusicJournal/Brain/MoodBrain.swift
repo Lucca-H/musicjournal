@@ -105,7 +105,7 @@ enum BrainError: LocalizedError, Equatable {
         switch self {
         case .unavailable(let why): why
         case .failed(let why): why
-        case .timedOut: "The model took too long to answer."
+        case .timedOut: "Claude didn't answer in time. Check Claude Code is installed and signed in: run claude -p \"hi\" in Terminal. If it asks you to log in, run claude and sign in."
         case .badOutput(let why): "The model returned something unexpected: \(why)"
         }
     }

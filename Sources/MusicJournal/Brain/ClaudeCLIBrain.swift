@@ -150,6 +150,12 @@ enum ClaudeCLI {
         guard let envelope = lastJSONObject(in: data) else {
             throw BrainError.badOutput("no JSON from Claude Code")
         }
+        if ProcessInfo.processInfo.environment["MJ_CLAUDE_USAGE"] != nil {
+            // Test switch: print what each Claude call costs.
+            let u = envelope["usage"] as? [String: Any] ?? [:]
+            func n(_ k: String) -> Int { (u[k] as? Int) ?? 0 }
+            print("claude usage: input \(n("input_tokens")), cache write \(n("cache_creation_input_tokens")), cache read \(n("cache_read_input_tokens")), output \(n("output_tokens")), turns \(envelope["num_turns"] ?? 0), cost $\(envelope["total_cost_usd"] ?? 0)")
+        }
         if envelope["is_error"] as? Bool == true {
             throw BrainError.failed("Claude Code: \((envelope["result"] as? String ?? "unknown error").truncated(to: 300))")
         }

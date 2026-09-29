@@ -130,14 +130,9 @@ struct StatusBanner: View {
         case .idle:
             EmptyView()
         case .working(let message):
-            HStack(spacing: 10) {
-                ProgressView().controlSize(.small)
-                Text(message).foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .glassEffect(.regular, in: .capsule)
-            .transition(.opacity)
+            WorkingBanner(message: message)
+                .id(message)          // a new step restarts the clock
+                .transition(.opacity)
         case .failed(let message):
             Label {
                 Text(message).textSelection(.enabled)
@@ -148,5 +143,47 @@ struct StatusBanner: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .glassEffect(.regular.tint(Theme.clay.opacity(0.18)), in: .rect(cornerRadius: 16))
         }
+    }
+}
+
+/// "Thinking with Claude…" that never just spins: after a few seconds it shows how long it's
+/// been, and if Claude is taking unusually long it says what to check and offers Cancel.
+private struct WorkingBanner: View {
+    @Environment(AppModel.self) private var model
+    let message: String
+    @State private var started = Date()
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let elapsed = Int(context.date.timeIntervalSince(started))
+            VStack(spacing: 8) {
+                HStack(spacing: 10) {
+                    ProgressView().controlSize(.small)
+                    Text(message).foregroundStyle(.secondary)
+                    if elapsed >= 10 {
+                        Text("\(elapsed / 60):\(String(format: "%02d", elapsed % 60))")
+                            .font(Theme.smallPrint)
+                            .foregroundStyle(.tertiary)
+                    }
+                    if elapsed >= 30 {
+                        Button("Cancel") { model.cancel() }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if elapsed >= 30 {
+                    Text("Taking longer than usual. If it doesn't finish, check Claude Code: run claude -p \"hi\" in Terminal to make sure it's installed and signed in.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 420)
+                        .transition(.opacity)
+                }
+            }
+            .animation(.smooth(duration: 0.4), value: elapsed >= 30)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .glassEffect(.regular, in: .rect(cornerRadius: 24))
     }
 }
